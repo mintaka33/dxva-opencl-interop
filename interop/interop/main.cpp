@@ -11,7 +11,7 @@ using namespace std;
 #define FREE_RESOURCE(res) \
     if(res) {res->Release(); res = NULL;}
 
-int main(char argc, char** argv)
+int dxvaDec()
 {
     DXVAData dxvaDecData = g_dxvaDataAVC_Short;
     HRESULT hr = S_OK;
@@ -181,10 +181,12 @@ int main(char argc, char** argv)
         }
     }
 
-    if (SUCCEEDED(hr)) {
+    if (SUCCEEDED(hr)) 
+    {
         printf("\nINFO: decode execution success.\n");
     }
-    else {
+    else 
+    {
         printf("\nINFO: decode execution failed.\n");
     }
 
@@ -196,6 +198,13 @@ int main(char argc, char** argv)
     FREE_RESOURCE(pDecodeOutputView);
     FREE_RESOURCE(pVideoContext);
     FREE_RESOURCE(pD3D11Device);
+
+    return 0;
+}
+
+int main(char argc, char** argv)
+{
+    dxvaDec();
 
     return 0;
 }
