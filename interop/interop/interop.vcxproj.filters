@@ -18,6 +18,9 @@
     <ClInclude Include="dxva_data.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="utils.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dxva_data.cpp">
@@ -26,5 +29,13 @@
     <ClCompile Include="main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="utils.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="ocl_add.cl">
+      <Filter>Source Files</Filter>
+    </None>
   </ItemGroup>
 </Project>
