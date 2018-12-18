@@ -4,6 +4,12 @@
 #include "dxva_dec.h"
 #include "ocl.h"
 
+void test()
+{
+    dxvaDecode();
+    oclAdd();
+}
+
 int main(char argc, char** argv)
 {
     cl_int error = CL_SUCCESS;

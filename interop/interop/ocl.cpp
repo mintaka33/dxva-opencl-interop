@@ -735,7 +735,7 @@ bool ReadAndVerify(ocl_args_d_t *ocl, cl_uint width, cl_uint height, cl_int *inp
  *   - running OpenCL kernel
  *   - reading results of processing
  */
-int oclCompute()
+int oclAdd()
 {
     cl_int err;
     ocl_args_d_t ocl;

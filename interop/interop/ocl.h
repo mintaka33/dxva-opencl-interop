@@ -142,3 +142,5 @@ int SetupOpenCL(ocl_args_d_t *ocl, cl_device_type deviceType, ID3D11Device *pD3D
 int CreateAndBuildProgram(ocl_args_d_t *ocl);
 int CreateBufferArguments(ocl_args_d_t *ocl, cl_int* inputA, cl_int* inputB, cl_int* outputC, cl_uint arrayWidth, cl_uint arrayHeight);
 cl_uint SetKernelArguments(ocl_args_d_t *ocl);
+
+int oclAdd();
