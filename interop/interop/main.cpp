@@ -6,6 +6,11 @@
 
 int main(char argc, char** argv)
 {
+    cl_int error = CL_SUCCESS;
+    ocl_args_d_t ocl;
+    cl_mem sharedDecodeRT;
+    cl_device_type deviceType = CL_DEVICE_TYPE_GPU;
+
     DXVAData dxvaDecData = g_dxvaDataAVC_Short;
     HRESULT hr = S_OK;
     ID3D11Device *pD3D11Device = NULL;
@@ -22,11 +27,6 @@ int main(char argc, char** argv)
     {
         hr = pD3D11Device->QueryInterface(&pD3D11VideoDevice);
     }
-
-    cl_int error = CL_SUCCESS;
-    ocl_args_d_t ocl;
-    cl_mem sharedDecodeRT;
-    cl_device_type deviceType = CL_DEVICE_TYPE_GPU;
 
     //initialize Open CL objects (context, queue, etc.)
     if (CL_SUCCESS != SetupOpenCL(&ocl, deviceType, pD3D11Device))
