@@ -1,4 +1,4 @@
-#include "ocl_common.h"
+#include "ocl.h"
 
 ocl_args_d_t::ocl_args_d_t() :
     context(NULL),

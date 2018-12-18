@@ -2,7 +2,7 @@
 #include <stdlib.h>
 
 #include "dxva_dec.h"
-#include "ocl_common.h"
+#include "ocl.h"
 
 int main(char argc, char** argv)
 {
