@@ -133,12 +133,14 @@
   <ItemGroup>
     <ClInclude Include="dxva_data.h" />
     <ClInclude Include="dxva_dec.h" />
+    <ClInclude Include="ocl_common.h" />
     <ClInclude Include="utils.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dxva_data.cpp" />
     <ClCompile Include="dxva_dec.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="ocl_common.cpp" />
     <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>

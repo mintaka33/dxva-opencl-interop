@@ -24,6 +24,9 @@
     <ClInclude Include="dxva_dec.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="ocl_common.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dxva_data.cpp">
@@ -36,6 +39,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="dxva_dec.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ocl_common.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
