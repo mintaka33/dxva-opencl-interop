@@ -22,10 +22,6 @@
 #define OPENCL_VERSION_1_2  1.2f
 #define OPENCL_VERSION_2_0  2.0f
 
-static clCreateFromD3D11Texture2DKHR_fn clCreateFromD3D11Texture2DKHR = NULL;
-static clEnqueueAcquireD3D11ObjectsKHR_fn clEnqueueAcquireD3D11ObjectsKHR = NULL;
-static clEnqueueReleaseD3D11ObjectsKHR_fn clEnqueueReleaseD3D11ObjectsKHR = NULL;
-
 /* This function helps to create informative messages in
  * case when OpenCL errors occur. It returns a string
  * representation for an OpenCL error code.
@@ -131,6 +127,10 @@ struct ocl_args_d_t
     cl_mem           srcA;              // hold first source buffer
     cl_mem           srcB;              // hold second source buffer
     cl_mem           dstMem;            // hold destination buffer
+
+    clCreateFromD3D11Texture2DKHR_fn   clCreateFromD3D11Texture2DKHR = NULL;
+    clEnqueueAcquireD3D11ObjectsKHR_fn clEnqueueAcquireD3D11ObjectsKHR = NULL;
+    clEnqueueReleaseD3D11ObjectsKHR_fn clEnqueueReleaseD3D11ObjectsKHR = NULL;
 };
 
 bool CheckPreferredPlatformMatch(cl_platform_id platform, const char* preferredPlatform);

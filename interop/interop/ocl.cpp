@@ -401,13 +401,6 @@ int SetupOpenCL(ocl_args_d_t *ocl, cl_device_type deviceType)
         return err;
     }
 
-    clCreateFromD3D11Texture2DKHR = (clCreateFromD3D11Texture2DKHR_fn)
-        clGetExtensionFunctionAddressForPlatform(platformId, "clCreateFromD3D11Texture2DKHR");
-    clEnqueueAcquireD3D11ObjectsKHR = (clEnqueueAcquireD3D11ObjectsKHR_fn)
-        clGetExtensionFunctionAddressForPlatform(platformId, "clEnqueueAcquireD3D11ObjectsKHR");
-    clEnqueueReleaseD3D11ObjectsKHR = (clEnqueueReleaseD3D11ObjectsKHR_fn)
-        clGetExtensionFunctionAddressForPlatform(platformId, "clEnqueueReleaseD3D11ObjectsKHR");
-
     return CL_SUCCESS;
 }
 
@@ -479,11 +472,11 @@ int SetupOpenCL(ocl_args_d_t *ocl, cl_device_type deviceType, ID3D11Device *pD3D
         return err;
     }
 
-    clCreateFromD3D11Texture2DKHR = (clCreateFromD3D11Texture2DKHR_fn)
+    ocl->clCreateFromD3D11Texture2DKHR = (clCreateFromD3D11Texture2DKHR_fn)
         clGetExtensionFunctionAddressForPlatform(platformId, "clCreateFromD3D11Texture2DKHR");
-    clEnqueueAcquireD3D11ObjectsKHR = (clEnqueueAcquireD3D11ObjectsKHR_fn)
+    ocl->clEnqueueAcquireD3D11ObjectsKHR = (clEnqueueAcquireD3D11ObjectsKHR_fn)
         clGetExtensionFunctionAddressForPlatform(platformId, "clEnqueueAcquireD3D11ObjectsKHR");
-    clEnqueueReleaseD3D11ObjectsKHR = (clEnqueueReleaseD3D11ObjectsKHR_fn)
+    ocl->clEnqueueReleaseD3D11ObjectsKHR = (clEnqueueReleaseD3D11ObjectsKHR_fn)
         clGetExtensionFunctionAddressForPlatform(platformId, "clEnqueueReleaseD3D11ObjectsKHR");
 
     return CL_SUCCESS;

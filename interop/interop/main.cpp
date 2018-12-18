@@ -34,12 +34,6 @@ int main(char argc, char** argv)
         hr = pD3D11Device->QueryInterface(&pD3D11VideoDevice);
     }
 
-    //initialize Open CL objects (context, queue, etc.)
-    if (CL_SUCCESS != SetupOpenCL(&ocl, deviceType, pD3D11Device))
-    {
-        return -1;
-    }
-
     ID3D11VideoDecoder *pVideoDecoder = NULL;
     if (SUCCEEDED(hr))
     {
@@ -68,12 +62,6 @@ int main(char argc, char** argv)
         descRT.CPUAccessFlags = 0;
         descRT.MiscFlags = 0;
         hr = pD3D11Device->CreateTexture2D(&descRT, NULL, &pSurfaceDecodeNV12);
-    }
-
-    if (SUCCEEDED(hr))
-    {
-        sharedDecodeRT = clCreateFromD3D11Texture2DKHR(ocl.context, CL_MEM_READ_WRITE, pSurfaceDecodeNV12, 0, &error);
-        CL_CHECK_AND_RETURN(error);
     }
 
     ID3D11Texture2D *pSurfaceCopyStaging = NULL;
@@ -125,6 +113,35 @@ int main(char argc, char** argv)
     if (SUCCEEDED(hr))
     {
         hr = pDeviceContext->QueryInterface(&pVideoContext);
+    }
+
+    //initialize Open CL objects (context, queue, etc.)
+    if (CL_SUCCESS != SetupOpenCL(&ocl, deviceType, pD3D11Device))
+    {
+        return -1;
+    }
+
+    // create OCL memory from D3D11 resource
+    if (SUCCEEDED(hr))
+    {
+        sharedDecodeRT = ocl.clCreateFromD3D11Texture2DKHR(ocl.context, CL_MEM_READ_WRITE, pSurfaceDecodeNV12, 0, &error);
+        CL_CHECK_AND_RETURN(error);
+    }
+
+    // Create and build the OpenCL program
+    if (CL_SUCCESS != CreateAndBuildProgram(&ocl))
+    {
+        return -1;
+    }
+
+    // Program consists of kernels.
+    // Each kernel can be called (enqueued) from the host part of OpenCL application.
+    // To call the kernel, you need to create it from existing program.
+    ocl.kernel = clCreateKernel(ocl.program, "Add", &error);
+    if (CL_SUCCESS != error)
+    {
+        LogError("Error: clCreateKernel returned %s\n", TranslateOpenCLError(error));
+        return -1;
     }
 
     if (SUCCEEDED(hr))
