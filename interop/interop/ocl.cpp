@@ -500,7 +500,7 @@ int CreateAndBuildProgram(ocl_args_d_t *ocl)
     // The size of the C program is returned in sourceSize
     char* source = NULL;
     size_t src_size = 0;
-    err = ReadSourceFromFile("ocl_add.cl", &source, &src_size);
+    err = ReadSourceFromFile("add.cl", &source, &src_size);
     if (CL_SUCCESS != err)
     {
         LogError("Error: ReadSourceFromFile returned %s.\n", TranslateOpenCLError(err));

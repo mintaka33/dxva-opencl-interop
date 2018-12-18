@@ -46,7 +46,7 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <None Include="ocl_add.cl">
+    <None Include="add.cl">
       <Filter>Source Files</Filter>
     </None>
   </ItemGroup>
