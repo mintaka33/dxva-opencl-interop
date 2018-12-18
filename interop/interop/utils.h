@@ -20,10 +20,6 @@
  * problem reports or change requests be submitted to it directly
  *****************************************************************************/
 
-#include "CL\cl.h"
-#include <d3d9.h>
-
-
 #pragma once
 
 // Print useful information to the default output. Same usage as with printf

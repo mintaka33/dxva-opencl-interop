@@ -30,11 +30,9 @@
 #include "utils.h"
 #include <assert.h>
 
-
 //we want to use POSIX functions
 #pragma warning( push )
 #pragma warning( disable : 4996 )
-
 
 void LogInfo(const char* str, ...)
 {

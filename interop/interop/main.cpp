@@ -11,14 +11,18 @@
 #define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 
 #include "CL\cl.h"
-#include "utils.h"
+#include "CL\cl_d3d11.h"
 
+#include "utils.h"
 #include "dxva_data.h"
 
 using namespace std;
 
 #define FREE_RESOURCE(res) \
     if(res) {res->Release(); res = NULL;}
+
+#define CL_CHECK_AND_RETURN( err ) \
+    if (err != CL_SUCCESS) return -1;
 
 // Macros for OpenCL versions
 #define OPENCL_VERSION_1_2  1.2f
@@ -131,6 +135,10 @@ struct ocl_args_d_t
     cl_mem           srcB;              // hold second source buffer
     cl_mem           dstMem;            // hold destination buffer
 };
+
+clCreateFromD3D11Texture2DKHR_fn clCreateFromD3D11Texture2DKHR = NULL;
+clEnqueueAcquireD3D11ObjectsKHR_fn clEnqueueAcquireD3D11ObjectsKHR = NULL;
+clEnqueueReleaseD3D11ObjectsKHR_fn clEnqueueReleaseD3D11ObjectsKHR = NULL;
 
 ocl_args_d_t::ocl_args_d_t() :
     context(NULL),
@@ -534,9 +542,93 @@ int SetupOpenCL(ocl_args_d_t *ocl, cl_device_type deviceType)
         return err;
     }
 
+    clCreateFromD3D11Texture2DKHR = (clCreateFromD3D11Texture2DKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(platformId, "clCreateFromD3D11Texture2DKHR");
+    clEnqueueAcquireD3D11ObjectsKHR = (clEnqueueAcquireD3D11ObjectsKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(platformId, "clEnqueueAcquireD3D11ObjectsKHR");
+    clEnqueueReleaseD3D11ObjectsKHR = (clEnqueueReleaseD3D11ObjectsKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(platformId, "clEnqueueReleaseD3D11ObjectsKHR");
+
     return CL_SUCCESS;
 }
 
+int SetupOpenCL(ocl_args_d_t *ocl, cl_device_type deviceType, ID3D11Device *pD3D11Device)
+{
+    // The following variable stores return codes for all OpenCL calls.
+    cl_int err = CL_SUCCESS;
+
+    // Query for all available OpenCL platforms on the system
+    // Here you enumerate all platforms and pick one which name has preferredPlatform as a sub-string
+    cl_platform_id platformId = FindOpenCLPlatform("Intel", deviceType);
+    if (NULL == platformId)
+    {
+        LogError("Error: Failed to find OpenCL platform.\n");
+        return CL_INVALID_VALUE;
+    }
+
+    // Create context with device of specified type.
+    // Required device type is passed as function argument deviceType.
+    // So you may use this function to create context for any CPU or GPU OpenCL device.
+    // The creation is synchronized (pfn_notify is NULL) and NULL user_data
+    cl_context_properties contextProperties[] = { 
+        CL_CONTEXT_PLATFORM, (cl_context_properties)platformId, 
+        CL_CONTEXT_D3D11_DEVICE_KHR, (cl_context_properties)(pD3D11Device),
+        CL_CONTEXT_INTEROP_USER_SYNC, CL_FALSE,
+        0 
+    };
+    ocl->context = clCreateContextFromType(contextProperties, deviceType, NULL, NULL, &err);
+    if ((CL_SUCCESS != err) || (NULL == ocl->context))
+    {
+        LogError("Couldn't create a context, clCreateContextFromType() returned '%s'.\n", TranslateOpenCLError(err));
+        return err;
+    }
+
+    // Query for OpenCL device which was used for context creation
+    err = clGetContextInfo(ocl->context, CL_CONTEXT_DEVICES, sizeof(cl_device_id), &ocl->device, NULL);
+    if (CL_SUCCESS != err)
+    {
+        LogError("Error: clGetContextInfo() to get list of devices returned %s.\n", TranslateOpenCLError(err));
+        return err;
+    }
+
+    // Read the OpenCL platform's version and the device OpenCL and OpenCL C versions
+    GetPlatformAndDeviceVersion(platformId, ocl);
+
+    // Create command queue.
+    // OpenCL kernels are enqueued for execution to a particular device through special objects called command queues.
+    // Command queue guarantees some ordering between calls and other OpenCL commands.
+    // Here you create a simple in-order OpenCL command queue that doesn't allow execution of two kernels in parallel on a target device.
+#ifdef CL_VERSION_2_0
+    if (OPENCL_VERSION_2_0 == ocl->deviceVersion)
+    {
+        const cl_command_queue_properties properties[] = { CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0 };
+        ocl->commandQueue = clCreateCommandQueueWithProperties(ocl->context, ocl->device, properties, &err);
+    }
+    else {
+        // default behavior: OpenCL 1.2
+        cl_command_queue_properties properties = CL_QUEUE_PROFILING_ENABLE;
+        ocl->commandQueue = clCreateCommandQueue(ocl->context, ocl->device, properties, &err);
+    }
+#else
+    // default behavior: OpenCL 1.2
+    cl_command_queue_properties properties = CL_QUEUE_PROFILING_ENABLE;
+    ocl->commandQueue = clCreateCommandQueue(ocl->context, ocl->device, properties, &err);
+#endif
+    if (CL_SUCCESS != err)
+    {
+        LogError("Error: clCreateCommandQueue() returned %s.\n", TranslateOpenCLError(err));
+        return err;
+    }
+
+    clCreateFromD3D11Texture2DKHR = (clCreateFromD3D11Texture2DKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(platformId, "clCreateFromD3D11Texture2DKHR");
+    clEnqueueAcquireD3D11ObjectsKHR = (clEnqueueAcquireD3D11ObjectsKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(platformId, "clEnqueueAcquireD3D11ObjectsKHR");
+    clEnqueueReleaseD3D11ObjectsKHR = (clEnqueueReleaseD3D11ObjectsKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(platformId, "clEnqueueReleaseD3D11ObjectsKHR");
+
+    return CL_SUCCESS;
+}
 
 /*
  * Create and build OpenCL program from its source code
@@ -794,8 +886,8 @@ int oclCompute()
     LARGE_INTEGER performanceCountNDRangeStart;
     LARGE_INTEGER performanceCountNDRangeStop;
 
-    cl_uint arrayWidth = 1024;
-    cl_uint arrayHeight = 1024;
+    cl_uint arrayWidth = 320;
+    cl_uint arrayHeight = 240;
 
     //initialize Open CL objects (context, queue, etc.)
     if (CL_SUCCESS != SetupOpenCL(&ocl, deviceType))
@@ -1081,9 +1173,157 @@ int dxvaDecode()
 
 int main(char argc, char** argv)
 {
-    dxvaDecode();
+    DXVAData dxvaDecData = g_dxvaDataAVC_Short;
+    HRESULT hr = S_OK;
+    ID3D11Device *pD3D11Device = NULL;
+    ID3D11DeviceContext *pDeviceContext = NULL;
+    D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1 };
+    D3D_FEATURE_LEVEL fl;
+    GUID profile = dxvaDecData.guidDecoder;
 
-    oclCompute();
+    hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, levels, 1,
+        D3D11_SDK_VERSION, &pD3D11Device, &fl, &pDeviceContext);
+
+    ID3D11VideoDevice * pD3D11VideoDevice = NULL;
+    if (SUCCEEDED(hr))
+    {
+        hr = pD3D11Device->QueryInterface(&pD3D11VideoDevice);
+    }
+
+    cl_int error = CL_SUCCESS;
+    ocl_args_d_t ocl;
+    cl_mem sharedDecodeRT;
+    cl_device_type deviceType = CL_DEVICE_TYPE_GPU;
+
+    //initialize Open CL objects (context, queue, etc.)
+    if (CL_SUCCESS != SetupOpenCL(&ocl, deviceType, pD3D11Device))
+    {
+        return -1;
+    }
+
+    ID3D11VideoDecoder *pVideoDecoder = NULL;
+    if (SUCCEEDED(hr))
+    {
+        D3D11_VIDEO_DECODER_DESC desc = { 0 };
+        desc.Guid = profile;
+        desc.SampleWidth = dxvaDecData.picWidth;
+        desc.SampleHeight = dxvaDecData.picHeight;
+        desc.OutputFormat = DXGI_FORMAT_NV12;
+        D3D11_VIDEO_DECODER_CONFIG config = { 0 };
+        config.ConfigBitstreamRaw = dxvaDecData.isShortFormat; // 0: long format; 1: short format
+        hr = pD3D11VideoDevice->CreateVideoDecoder(&desc, &config, &pVideoDecoder);
+    }
+
+    ID3D11Texture2D *pSurfaceDecodeNV12 = NULL;
+    if (SUCCEEDED(hr))
+    {
+        D3D11_TEXTURE2D_DESC descRT = { 0 };
+        descRT.Width = dxvaDecData.picWidth;
+        descRT.Height = dxvaDecData.picHeight;
+        descRT.MipLevels = 1;
+        descRT.ArraySize = 1;
+        descRT.Format = DXGI_FORMAT_NV12;
+        descRT.SampleDesc = { 1, 0 }; // DXGI_SAMPLE_DESC 
+        descRT.Usage = D3D11_USAGE_DEFAULT; // D3D11_USAGE 
+        descRT.BindFlags = D3D11_BIND_DECODER;
+        descRT.CPUAccessFlags = 0;
+        descRT.MiscFlags = 0;
+        hr = pD3D11Device->CreateTexture2D(&descRT, NULL, &pSurfaceDecodeNV12);
+    }
+
+    if (SUCCEEDED(hr))
+    {
+        sharedDecodeRT = clCreateFromD3D11Texture2DKHR(ocl.context, CL_MEM_READ_WRITE, pSurfaceDecodeNV12, 0, &error);
+        CL_CHECK_AND_RETURN(error);
+    }
+
+    ID3D11Texture2D *pSurfaceCopyStaging = NULL;
+    if (SUCCEEDED(hr))
+    {
+        D3D11_TEXTURE2D_DESC descRT = { 0 };
+        descRT.Width = dxvaDecData.picWidth;
+        descRT.Height = dxvaDecData.picHeight;
+        descRT.MipLevels = 1;
+        descRT.ArraySize = 1;
+        descRT.Format = DXGI_FORMAT_NV12;
+        descRT.SampleDesc = { 1, 0 }; // DXGI_SAMPLE_DESC 
+        descRT.Usage = D3D11_USAGE_STAGING; // D3D11_USAGE 
+        descRT.BindFlags = 0;
+        descRT.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+        descRT.MiscFlags = 0;
+        hr = pD3D11Device->CreateTexture2D(&descRT, NULL, &pSurfaceCopyStaging);
+    }
+
+    ID3D11VideoDecoderOutputView *pDecodeOutputView = NULL;
+    if (SUCCEEDED(hr))
+    {
+        D3D11_VIDEO_DECODER_OUTPUT_VIEW_DESC desc = { 0 };
+        desc.DecodeProfile = profile;
+        desc.ViewDimension = D3D11_VDOV_DIMENSION_TEXTURE2D;
+        hr = pD3D11VideoDevice->CreateVideoDecoderOutputView(pSurfaceDecodeNV12, &desc, &pDecodeOutputView);
+    }
+
+    UINT profileCount = 0;
+    GUID decoderGUID = {};
+    if (SUCCEEDED(hr))
+    {
+        profileCount = pD3D11VideoDevice->GetVideoDecoderProfileCount();
+        printf("INFO: Decoder Profile Count = %d\n", profileCount);
+
+        for (UINT i = 0; i < profileCount; i++)
+        {
+            hr = pD3D11VideoDevice->GetVideoDecoderProfile(i, &decoderGUID);
+            if (SUCCEEDED(hr))
+            {
+                OLECHAR sGUID[64] = { 0 };
+                StringFromGUID2(decoderGUID, sGUID, 64);
+                wprintf(L"INFO: Index %02d - GUID = %s\n", i, sGUID);
+            }
+        }
+    }
+
+    ID3D11VideoContext* pVideoContext = NULL;
+    if (SUCCEEDED(hr))
+    {
+        hr = pDeviceContext->QueryInterface(&pVideoContext);
+    }
+
+    if (SUCCEEDED(hr))
+    {
+        hr = pVideoContext->DecoderBeginFrame(pVideoDecoder, pDecodeOutputView, 0, 0);
+    }
+
+    if (SUCCEEDED(hr))
+    {
+        UINT sizeDesc = sizeof(D3D11_VIDEO_DECODER_BUFFER_DESC) * dxvaDecData.dxvaBufNum;
+        D3D11_VIDEO_DECODER_BUFFER_DESC *descDecBuffers = new D3D11_VIDEO_DECODER_BUFFER_DESC[dxvaDecData.dxvaBufNum];
+        memset(descDecBuffers, 0, sizeDesc);
+
+        for (UINT i = 0; i < dxvaDecData.dxvaBufNum; i++)
+        {
+            BYTE* buffer = 0;
+            UINT bufferSize = 0;
+            descDecBuffers[i].BufferIndex = i;
+            descDecBuffers[i].BufferType = dxvaDecData.dxvaDecBuffers[i].bufType;
+            descDecBuffers[i].DataSize = dxvaDecData.dxvaDecBuffers[i].bufSize;
+
+            hr = pVideoContext->GetDecoderBuffer(pVideoDecoder, descDecBuffers[i].BufferType, &bufferSize, reinterpret_cast<void**>(&buffer));
+            if (SUCCEEDED(hr))
+            {
+                UINT copySize = min(bufferSize, descDecBuffers[i].DataSize);
+                memcpy_s(buffer, copySize, dxvaDecData.dxvaDecBuffers[i].pBufData, copySize);
+                hr = pVideoContext->ReleaseDecoderBuffer(pVideoDecoder, descDecBuffers[i].BufferType);
+            }
+        }
+
+        hr = pVideoContext->SubmitDecoderBuffers(pVideoDecoder, dxvaDecData.dxvaBufNum, descDecBuffers);
+        delete[] descDecBuffers;
+    }
+
+    if (SUCCEEDED(hr))
+    {
+        hr = pVideoContext->DecoderEndFrame(pVideoDecoder);
+    }
 
     return 0;
 }
