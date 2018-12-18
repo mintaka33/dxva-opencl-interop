@@ -137,7 +137,7 @@ int main(char argc, char** argv)
     // Program consists of kernels.
     // Each kernel can be called (enqueued) from the host part of OpenCL application.
     // To call the kernel, you need to create it from existing program.
-    ocl.kernel = clCreateKernel(ocl.program, "Add", &error);
+    ocl.kernel = clCreateKernel(ocl.program, "Scale", &error);
     if (CL_SUCCESS != error)
     {
         LogError("Error: clCreateKernel returned %s\n", TranslateOpenCLError(error));
