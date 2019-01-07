@@ -14,7 +14,6 @@ int main(char argc, char** argv)
 {
     cl_int error = CL_SUCCESS;
     ocl_args_d_t ocl;
-    cl_mem sharedDecodeRT;
     cl_device_type deviceType = CL_DEVICE_TYPE_GPU;
 
     DXVAData dxvaDecData = g_dxvaDataAVC_Short;
@@ -115,35 +114,6 @@ int main(char argc, char** argv)
         hr = pDeviceContext->QueryInterface(&pVideoContext);
     }
 
-    //initialize Open CL objects (context, queue, etc.)
-    if (CL_SUCCESS != SetupOpenCL(&ocl, deviceType, pD3D11Device))
-    {
-        return -1;
-    }
-
-    // create OCL memory from D3D11 resource
-    if (SUCCEEDED(hr))
-    {
-        sharedDecodeRT = ocl.clCreateFromD3D11Texture2DKHR(ocl.context, CL_MEM_READ_WRITE, pSurfaceDecodeNV12, 0, &error);
-        CL_CHECK_AND_RETURN(error);
-    }
-
-    // Create and build the OpenCL program
-    if (CL_SUCCESS != CreateAndBuildProgram(&ocl))
-    {
-        return -1;
-    }
-
-    // Program consists of kernels.
-    // Each kernel can be called (enqueued) from the host part of OpenCL application.
-    // To call the kernel, you need to create it from existing program.
-    ocl.kernel = clCreateKernel(ocl.program, "Scale", &error);
-    if (CL_SUCCESS != error)
-    {
-        LogError("Error: clCreateKernel returned %s\n", TranslateOpenCLError(error));
-        return -1;
-    }
-
     if (SUCCEEDED(hr))
     {
         hr = pVideoContext->DecoderBeginFrame(pVideoDecoder, pDecodeOutputView, 0, 0);
@@ -180,6 +150,111 @@ int main(char argc, char** argv)
     {
         hr = pVideoContext->DecoderEndFrame(pVideoDecoder);
     }
+
+    if (SUCCEEDED(hr))
+    {
+        D3D11_BOX box;
+        box.left = 0,
+            box.right = dxvaDecData.picWidth,
+            box.top = 0,
+            box.bottom = dxvaDecData.picHeight,
+            box.front = 0,
+            box.back = 1;
+        pDeviceContext->CopySubresourceRegion(pSurfaceCopyStaging, 0, 0, 0, 0, pSurfaceDecodeNV12, 0, &box);
+        D3D11_MAPPED_SUBRESOURCE subRes;
+        ZeroMemory(&subRes, sizeof(subRes));
+        hr = pDeviceContext->Map(pSurfaceCopyStaging, 0, D3D11_MAP_READ, 0, &subRes);
+
+        if (SUCCEEDED(hr))
+        {
+            UINT height = dxvaDecData.picHeight;
+            BYTE *pData = (BYTE*)malloc(subRes.RowPitch * (height + height / 2));
+            if (pData)
+            {
+                CopyMemory(pData, subRes.pData, subRes.RowPitch * (height + height / 2));
+                FILE *fp;
+                char fileName[256] = {};
+                sprintf_s(fileName, 256, "out_%d_%d_nv12.yuv", subRes.RowPitch, height);
+                fopen_s(&fp, fileName, "wb");
+                fwrite(pData, subRes.RowPitch * (height + height / 2), 1, fp);
+                fclose(fp);
+                free(pData);
+            }
+            pDeviceContext->Unmap(pSurfaceCopyStaging, 0);
+        }
+    }
+
+    //initialize Open CL objects (context, queue, etc.)
+    if (CL_SUCCESS != SetupOpenCL(&ocl, deviceType, pD3D11Device))
+    {
+        return -1;
+    }
+
+    // Create and build the OpenCL program
+    if (CL_SUCCESS != CreateAndBuildProgram(&ocl))
+    {
+        return -1;
+    }
+
+    // Program consists of kernels.
+    // Each kernel can be called (enqueued) from the host part of OpenCL application.
+    // To call the kernel, you need to create it from existing program.
+    ocl.kernel = clCreateKernel(ocl.program, "Scale", &error);
+    if (CL_SUCCESS != error)
+    {
+        LogError("Error: clCreateKernel returned %s\n", TranslateOpenCLError(error));
+        return -1;
+    }
+
+    // create OCL memory from D3D11 resource
+    cl_mem sharedDecodeRT;
+    if (SUCCEEDED(hr))
+    {
+        sharedDecodeRT = ocl.clCreateFromD3D11Texture2DKHR(ocl.context, CL_MEM_READ_WRITE, pSurfaceDecodeNV12, 0, &error);
+        CL_CHECK_AND_RETURN(error);
+    }
+
+    if (SUCCEEDED(hr))
+    {
+        D3D11_BOX box;
+        box.left = 0,
+            box.right = dxvaDecData.picWidth,
+            box.top = 0,
+            box.bottom = dxvaDecData.picHeight,
+            box.front = 0,
+            box.back = 1;
+        pDeviceContext->CopySubresourceRegion(pSurfaceCopyStaging, 0, 0, 0, 0, pSurfaceDecodeNV12, 0, &box);
+        D3D11_MAPPED_SUBRESOURCE subRes;
+        ZeroMemory(&subRes, sizeof(subRes));
+        hr = pDeviceContext->Map(pSurfaceCopyStaging, 0, D3D11_MAP_READ, 0, &subRes);
+
+        if (SUCCEEDED(hr))
+        {
+            UINT height = dxvaDecData.picHeight;
+            BYTE *pData = (BYTE*)malloc(subRes.RowPitch * (height + height / 2));
+            if (pData)
+            {
+                CopyMemory(pData, subRes.pData, subRes.RowPitch * (height + height / 2));
+                FILE *fp;
+                char fileName[256] = {};
+                sprintf_s(fileName, 256, "out_%d_%d_nv12_ocl.yuv", subRes.RowPitch, height);
+                fopen_s(&fp, fileName, "wb");
+                fwrite(pData, subRes.RowPitch * (height + height / 2), 1, fp);
+                fclose(fp);
+                free(pData);
+            }
+            pDeviceContext->Unmap(pSurfaceCopyStaging, 0);
+        }
+    }
+
+    FREE_RESOURCE(pDeviceContext);
+    FREE_RESOURCE(pSurfaceDecodeNV12);
+    FREE_RESOURCE(pSurfaceCopyStaging);
+    FREE_RESOURCE(pD3D11VideoDevice);
+    FREE_RESOURCE(pVideoDecoder);
+    FREE_RESOURCE(pDecodeOutputView);
+    FREE_RESOURCE(pVideoContext);
+    FREE_RESOURCE(pD3D11Device);
 
     return 0;
 }
