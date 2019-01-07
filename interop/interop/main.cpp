@@ -208,10 +208,51 @@ int main(char argc, char** argv)
 
     // create OCL memory from D3D11 resource
     cl_mem sharedDecodeRT;
-    if (SUCCEEDED(hr))
+    sharedDecodeRT = ocl.clCreateFromD3D11Texture2DKHR(ocl.context, CL_MEM_READ_WRITE, pSurfaceDecodeNV12, 0, &error);
+    if (CL_SUCCESS != error)
     {
-        sharedDecodeRT = ocl.clCreateFromD3D11Texture2DKHR(ocl.context, CL_MEM_READ_WRITE, pSurfaceDecodeNV12, 0, &error);
-        CL_CHECK_AND_RETURN(error);
+        LogError("Error: clCreateFromD3D11Texture2DKHR returned %s\n", TranslateOpenCLError(error));
+        return -1;
+    }
+
+    // Acquire D3D11 object
+    error = ocl.clEnqueueAcquireD3D11ObjectsKHR(ocl.commandQueue, 1, &sharedDecodeRT, 0, NULL, NULL);
+    if (CL_SUCCESS != error)
+    {
+        LogError("Error: clCreateFromD3D11Texture2DKHR returned %s\n", TranslateOpenCLError(error));
+        return -1;
+    }
+
+    error = clSetKernelArg(ocl.kernel, 0, sizeof(cl_mem), (void *)&sharedDecodeRT);
+    if (CL_SUCCESS != error)
+    {
+        LogError("error: Failed to set argument, returned %s\n", TranslateOpenCLError(error));
+        return -1;
+    }
+
+    // execute kernel
+    size_t globalWorkSize[2] = { dxvaDecData.picWidth, dxvaDecData.picHeight };
+    error = clEnqueueNDRangeKernel(ocl.commandQueue, ocl.kernel, 2, NULL, globalWorkSize, NULL, 0, NULL, NULL);
+    if (CL_SUCCESS != error)
+    {
+        LogError("Error: Failed to run kernel, return %s\n", TranslateOpenCLError(error));
+        return -1;
+    }
+
+    // Wait until the queued kernel is completed by the device
+    error = clFinish(ocl.commandQueue);
+    if (CL_SUCCESS != error)
+    {
+        LogError("Error: clFinish return %s\n", TranslateOpenCLError(error));
+        return -1;
+    }
+
+    // Release D3D11 object
+    error = ocl.clEnqueueReleaseD3D11ObjectsKHR(ocl.commandQueue, 1, &sharedDecodeRT, 0, NULL, NULL);
+    if (CL_SUCCESS != error)
+    {
+        LogError("Error: clEnqueueReleaseD3D11ObjectsKHR returned %s\n", TranslateOpenCLError(error));
+        return -1;
     }
 
     if (SUCCEEDED(hr))
@@ -255,6 +296,8 @@ int main(char argc, char** argv)
     FREE_RESOURCE(pDecodeOutputView);
     FREE_RESOURCE(pVideoContext);
     FREE_RESOURCE(pD3D11Device);
+
+    printf("Execution done. \n");
 
     return 0;
 }
