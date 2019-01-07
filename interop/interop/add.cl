@@ -33,13 +33,13 @@ __kernel void Add(read_only image2d_t imageA, read_only image2d_t imageB, write_
     write_imageui(imageC, (int2)(x, y), A + B);
 }
 
-__kernel void Scale(image2d_t image)
+__kernel void Scale(__read_write image2d_t image)
 {
     const int x = get_global_id(0);
     const int y = get_global_id(1);
 
-    uint A = read_imageui(image, sampler, (int2)(x, y)).x;
+    uint A = read_imageui(image, (int2)(x, y)).x;
 
-    //write_imageui(image, (int2)(x, y), A/2);
+    write_imageui(image, (int2)(x, y), A/4);
 }
 

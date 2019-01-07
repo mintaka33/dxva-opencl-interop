@@ -6,9 +6,9 @@ ocl_args_d_t::ocl_args_d_t() :
     commandQueue(NULL),
     program(NULL),
     kernel(NULL),
-    platformVersion(OPENCL_VERSION_1_2),
-    deviceVersion(OPENCL_VERSION_1_2),
-    compilerVersion(OPENCL_VERSION_1_2),
+    platformVersion(OPENCL_VERSION_2_0),
+    deviceVersion(OPENCL_VERSION_2_0),
+    compilerVersion(OPENCL_VERSION_2_0),
     srcA(NULL),
     srcB(NULL),
     dstMem(NULL)
@@ -514,7 +514,7 @@ int CreateAndBuildProgram(ocl_args_d_t *ocl)
     // but there are also other possibilities when program consist of several parts,
     // some of which are libraries, and you may want to consider using clCompileProgram and clLinkProgram as
     // alternatives.
-    err = clBuildProgram(ocl->program, 1, &ocl->device, "", NULL, NULL);
+    err = clBuildProgram(ocl->program, 1, &ocl->device, "-cl-std=CL2.0", NULL, NULL);
     if (CL_SUCCESS != err)
     {
         LogError("Error: clBuildProgram() for source program returned %s.\n", TranslateOpenCLError(err));
