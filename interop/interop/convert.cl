@@ -22,14 +22,12 @@
 
 constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
 
-__kernel void scale(read_write image2d_t src_image, write_only image2d_t dst_image) 
+__kernel void scale(read_write image2d_t image) 
 {
-   /* Read pixel value */
    int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
-   uint4 pixel = read_imageui(src_image, coord);
-   write_imageui(dst_image, coord, pixel);
+   uint4 pixel = read_imageui(image, coord);
+   uint4 pixel2 = pixel / 2;
 
-   uint4 pixel2 = (uint4)( 4, 0, 0, 0);
-   write_imageui(src_image, coord, pixel2);
+   write_imageui(image, coord, pixel2);
 }

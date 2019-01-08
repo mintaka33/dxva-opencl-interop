@@ -103,7 +103,7 @@ cl_program buildProgram(cl_context ctx, cl_device_id dev, const char* filename)
     return program;
 }
 
-int oclConvert(ID3D11Device *pD3D11Device, size_t width, size_t height)
+int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height)
 {
     /* Host/device data structures */
     cl_device_id device;
@@ -115,7 +115,7 @@ int oclConvert(ID3D11Device *pD3D11Device, size_t width, size_t height)
     size_t global_size[2];
 
     /* Image data */
-    cl_mem input_image, output_image;
+    cl_mem inOutImage;
     size_t origin[3], region[3];
 
     /* Create a device and context */
@@ -135,10 +135,10 @@ int oclConvert(ID3D11Device *pD3D11Device, size_t width, size_t height)
     };
 
     vector<uint8_t> pixels(width*height);
-    pixels[0] = 1;
-    pixels[1] = 2;
-    pixels[2] = 3;
-    pixels[3] = 4;
+    pixels[0] = 10;
+    pixels[1] = 20;
+    pixels[2] = 30;
+    pixels[3] = 40;
 
     cl_image_format format = {};
     format.image_channel_data_type = CL_UNSIGNED_INT8;
@@ -156,19 +156,16 @@ int oclConvert(ID3D11Device *pD3D11Device, size_t width, size_t height)
     desc.mem_object = NULL;
 
     /* Create image object */
-    input_image = clCreateImage(context,
+    inOutImage = clCreateImage(context,
         CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
         &format, &desc, (void*)&pixels[0], &err);
-    output_image = clCreateImage(context,
-        CL_MEM_WRITE_ONLY, &format, &desc, NULL, &err);
     if (err < 0) {
         perror("Couldn't create the image object");
         exit(1);
     };
 
     /* Create kernel arguments */
-    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_image);
-    err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &output_image);
+    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &inOutImage);
     if (err < 0) {
         printf("Couldn't set a kernel argument");
         exit(1);
@@ -191,21 +188,19 @@ int oclConvert(ID3D11Device *pD3D11Device, size_t width, size_t height)
         exit(1);
     }
 
-    vector<uint8_t> hostmem(width*height);
-
     /* Read the image object */
+    vector<uint8_t> hostMem(width*height);
     origin[0] = 0; origin[1] = 0; origin[2] = 0;
     region[0] = width; region[1] = height; region[2] = 1;
-    err = clEnqueueReadImage(queue, input_image, CL_TRUE, origin,
-        region, 0, 0, (void*)&hostmem[0], 0, NULL, NULL);
+    err = clEnqueueReadImage(queue, inOutImage, CL_TRUE, origin,
+        region, 0, 0, (void*)&hostMem[0], 0, NULL, NULL);
     if (err < 0) {
         perror("Couldn't read from the image object");
         exit(1);
     }
 
     /* Deallocate resources */
-    clReleaseMemObject(input_image);
-    clReleaseMemObject(output_image);
+    clReleaseMemObject(inOutImage);
     clReleaseKernel(kernel);
     clReleaseCommandQueue(queue);
     clReleaseProgram(program);
@@ -351,7 +346,7 @@ int main(char argc, char** argv)
         hr = pVideoContext->DecoderEndFrame(pVideoDecoder);
     }
 
-    oclConvert(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight);
+    oclConvertInPlace(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight);
 
     if (SUCCEEDED(hr))
     {
