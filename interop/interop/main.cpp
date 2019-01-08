@@ -126,8 +126,20 @@ void queryImageObjectInfo(cl_mem memObj)
     cl_mem associateMem;
     clGetMemObjectInfo(memObj, CL_MEM_ASSOCIATED_MEMOBJECT, sizeof(associateMem), &associateMem, NULL);
 
-    //ID3D10Resource* resource;
-    //clGetMemObjectInfo(memObj, CL_MEM_D3D10_RESOURCE_KHR, sizeof(resource), &resource, NULL);
+    cl_image_format format;
+    clGetImageInfo(memObj, CL_IMAGE_FORMAT, sizeof(format), &format, NULL);
+
+    size_t width;
+    clGetImageInfo(memObj, CL_IMAGE_WIDTH, sizeof(width), &width, NULL);
+
+    size_t height;
+    clGetImageInfo(memObj, CL_IMAGE_HEIGHT, sizeof(height), &height, NULL);
+
+    size_t pitch;
+    clGetImageInfo(memObj, CL_IMAGE_ROW_PITCH, sizeof(pitch), &pitch, NULL);
+
+    size_t elesize;
+    clGetImageInfo(memObj, CL_IMAGE_ELEMENT_SIZE, sizeof(elesize), &elesize, NULL);
 
     return;
 }
@@ -180,20 +192,22 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
         exit(1);
     };
 
-    cl_mem sharedImage;
-    sharedImage = clCreateFromD3D11Texture2DKHR(context, CL_MEM_READ_WRITE, pDecodeNV12, 0, &err);
+    // Note: the image format of sharedImageY created from NV12 d3d11 texture is 
+    // image_channel_data_type = CL_UNORM_INT8, image_channel_order = CL_R;
+    cl_mem sharedImageY;
+    sharedImageY = clCreateFromD3D11Texture2DKHR(context, CL_MEM_READ_WRITE, pDecodeNV12, 0, &err);
     if (err < 0) {
         printf("Failed to call clCreateFromD3D11Texture2DKHR: %d", err);
         exit(1);
     };
 
-    err = clEnqueueAcquireD3D11ObjectsKHR(queue, 1, &sharedImage, 0, NULL, NULL);
+    err = clEnqueueAcquireD3D11ObjectsKHR(queue, 1, &sharedImageY, 0, NULL, NULL);
     if (err < 0) {
         printf("Failed to call clEnqueueAcquireD3D11ObjectsKHR: %d", err);
         exit(1);
     };
 
-    queryImageObjectInfo(sharedImage);
+    queryImageObjectInfo(sharedImageY);
 
     vector<uint8_t> pixels(width*height);
     pixels[0] = 10;
@@ -226,7 +240,7 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     };
 
     /* Create kernel arguments */
-    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &sharedImage);
+    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &sharedImageY);
     if (err < 0) {
         printf("Couldn't set a kernel argument");
         exit(1);
@@ -245,14 +259,14 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     vector<uint8_t> hostMem(width*height);
     origin[0] = 0; origin[1] = 0; origin[2] = 0;
     region[0] = width; region[1] = height; region[2] = 1;
-    err = clEnqueueReadImage(queue, sharedImage, CL_TRUE, origin,
+    err = clEnqueueReadImage(queue, sharedImageY, CL_TRUE, origin,
         region, 0, 0, (void*)&hostMem[0], 0, NULL, NULL);
     if (err < 0) {
         perror("Couldn't read from the image object");
         exit(1);
     }
 
-    err = clEnqueueReleaseD3D11ObjectsKHR(queue, 1, &sharedImage, 0, NULL, NULL);
+    err = clEnqueueReleaseD3D11ObjectsKHR(queue, 1, &sharedImageY, 0, NULL, NULL);
     if (err < 0) {
         printf("Failed to call clEnqueueReleaseD3D11ObjectsKHR: %d", err);
         exit(1);
