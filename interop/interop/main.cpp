@@ -113,6 +113,26 @@ cl_program buildProgram(cl_context ctx, cl_device_id dev, const char* filename)
     return program;
 }
 
+void queryImageObjectInfo(cl_mem memObj)
+{
+    size_t size;
+    clGetMemObjectInfo(memObj, CL_MEM_SIZE, sizeof(size), &size, NULL);
+
+    cl_mem_object_type type;
+    clGetMemObjectInfo(memObj, CL_MEM_TYPE, sizeof(type), &type, NULL);
+
+    cl_mem_flags flags;
+    clGetMemObjectInfo(memObj, CL_MEM_FLAGS, sizeof(flags), &flags, NULL);
+
+    cl_mem associateMem;
+    clGetMemObjectInfo(memObj, CL_MEM_ASSOCIATED_MEMOBJECT, sizeof(associateMem), &associateMem, NULL);
+
+    //ID3D10Resource* resource;
+    //clGetMemObjectInfo(memObj, CL_MEM_D3D10_RESOURCE_KHR, sizeof(resource), &resource, NULL);
+
+    return;
+}
+
 int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, ID3D11Texture2D *pDecodeNV12)
 {
     /* Host/device data structures */
@@ -173,6 +193,8 @@ int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
         printf("Failed to call clEnqueueAcquireD3D11ObjectsKHR: %d", err);
         exit(1);
     };
+
+    queryImageObjectInfo(sharedImage);
 
     vector<uint8_t> pixels(width*height);
     pixels[0] = 10;
