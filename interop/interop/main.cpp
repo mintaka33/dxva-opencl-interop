@@ -11,19 +11,23 @@
 
 #include "dxva_data.h"
 
+#include "CL\cl.h"
+#include "CL\cl_d3d11.h"
+
 using namespace std;
 
 #define FREE_RESOURCE(res) \
     if(res) {res->Release(); res = NULL;}
-
-#include <CL/cl.h>
-#include <vector>
 
 using namespace std;
 
 #define _CRT_SECURE_NO_WARNINGS
 #define PROGRAM_FILE "convert.cl"
 #define KERNEL_FUNC "scale"
+
+clCreateFromD3D11Texture2DKHR_fn clCreateFromD3D11Texture2DKHR = NULL;
+clEnqueueAcquireD3D11ObjectsKHR_fn clEnqueueAcquireD3D11ObjectsKHR = NULL;
+clEnqueueReleaseD3D11ObjectsKHR_fn clEnqueueReleaseD3D11ObjectsKHR = NULL;
 
 /* Find a GPU or CPU associated with the first available platform */
 cl_device_id createDevice()
@@ -48,6 +52,13 @@ cl_device_id createDevice()
         perror("Couldn't access any devices");
         exit(1);
     }
+
+    clCreateFromD3D11Texture2DKHR = (clCreateFromD3D11Texture2DKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(platform, "clCreateFromD3D11Texture2DKHR");
+    clEnqueueAcquireD3D11ObjectsKHR = (clEnqueueAcquireD3D11ObjectsKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(platform, "clEnqueueAcquireD3D11ObjectsKHR");
+    clEnqueueReleaseD3D11ObjectsKHR = (clEnqueueReleaseD3D11ObjectsKHR_fn)
+        clGetExtensionFunctionAddressForPlatform(platform, "clEnqueueReleaseD3D11ObjectsKHR");
 
     return dev;
 }
