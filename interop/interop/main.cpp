@@ -21,7 +21,6 @@ using namespace std;
 
 using namespace std;
 
-#define _CRT_SECURE_NO_WARNINGS
 #define PROGRAM_FILE "convert.cl"
 #define KERNEL_FUNC "scale"
 
@@ -133,7 +132,7 @@ void queryImageObjectInfo(cl_mem memObj)
     return;
 }
 
-int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, ID3D11Texture2D *pDecodeNV12)
+int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, ID3D11Texture2D *pDecodeNV12)
 {
     /* Host/device data structures */
     cl_platform_id platform;
@@ -252,6 +251,12 @@ int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
         perror("Couldn't read from the image object");
         exit(1);
     }
+
+    err = clEnqueueReleaseD3D11ObjectsKHR(queue, 1, &sharedImage, 0, NULL, NULL);
+    if (err < 0) {
+        printf("Failed to call clEnqueueReleaseD3D11ObjectsKHR: %d", err);
+        exit(1);
+    };
 
     /* Deallocate resources */
     clReleaseMemObject(inOutImage);
@@ -400,7 +405,7 @@ int main(char argc, char** argv)
         hr = pVideoContext->DecoderEndFrame(pVideoDecoder);
     }
 
-    oclConvertInPlace(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight, pSurfaceDecodeNV12);
+    oclProcessInPlace(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight, pSurfaceDecodeNV12);
 
     if (SUCCEEDED(hr))
     {
