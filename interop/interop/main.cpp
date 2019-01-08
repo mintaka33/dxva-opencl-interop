@@ -155,9 +155,6 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     cl_kernel kernel;
     cl_int err;
     size_t global_size[2];
-
-    /* Image data */
-    cl_mem inOutImage;
     size_t origin[3], region[3];
 
     /* Create a device */
@@ -209,36 +206,6 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
 
     queryImageObjectInfo(sharedImageY);
 
-    vector<uint8_t> pixels(width*height);
-    pixels[0] = 10;
-    pixels[1] = 20;
-    pixels[2] = 30;
-    pixels[3] = 40;
-
-    cl_image_format format = {};
-    format.image_channel_data_type = CL_UNSIGNED_INT8;
-    format.image_channel_order = CL_R;
-    cl_image_desc desc = {};
-    desc.image_type = CL_MEM_OBJECT_IMAGE2D;
-    desc.image_width = width;
-    desc.image_height = height;
-    desc.image_depth = 0;
-    desc.image_array_size = 1;
-    desc.image_row_pitch = 0;
-    desc.image_slice_pitch = 0;
-    desc.num_mip_levels = 0;
-    desc.num_samples = 0;
-    desc.mem_object = NULL;
-
-    /* Create image object */
-    inOutImage = clCreateImage(context,
-        CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
-        &format, &desc, (void*)&pixels[0], &err);
-    if (err < 0) {
-        perror("Couldn't create the image object");
-        exit(1);
-    };
-
     /* Create kernel arguments */
     err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &sharedImageY);
     if (err < 0) {
@@ -273,7 +240,6 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     };
 
     /* Deallocate resources */
-    clReleaseMemObject(inOutImage);
     clReleaseKernel(kernel);
     clReleaseCommandQueue(queue);
     clReleaseProgram(program);
