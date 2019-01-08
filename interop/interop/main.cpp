@@ -1,21 +1,223 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <tchar.h>
+#include <memory.h>
 
-#include "dxva_dec.h"
-#include "ocl.h"
+#include <iostream>
+#include <string>
+#include <map>
+#include <vector>
 
-void test()
+#include "dxva_data.h"
+
+using namespace std;
+
+#define FREE_RESOURCE(res) \
+    if(res) {res->Release(); res = NULL;}
+
+#include <CL/cl.h>
+#include <vector>
+
+using namespace std;
+
+#define _CRT_SECURE_NO_WARNINGS
+#define PROGRAM_FILE "convert.cl"
+#define KERNEL_FUNC "scale"
+
+/* Find a GPU or CPU associated with the first available platform */
+cl_device_id create_device()
 {
-    dxvaDecode();
-    oclAdd();
+    cl_platform_id platform;
+    cl_device_id dev;
+    int err;
+
+    /* Identify a platform */
+    err = clGetPlatformIDs(1, &platform, NULL);
+    if (err < 0) {
+        perror("Couldn't identify a platform");
+        exit(1);
+    }
+
+    /* Access a device */
+    err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &dev, NULL);
+    if (err == CL_DEVICE_NOT_FOUND) {
+        err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &dev, NULL);
+    }
+    if (err < 0) {
+        perror("Couldn't access any devices");
+        exit(1);
+    }
+
+    return dev;
+}
+
+/* Create program from a file and compile it */
+cl_program build_program(cl_context ctx, cl_device_id dev, const char* filename)
+{
+    cl_program program;
+    FILE *program_handle;
+    char *program_buffer, *program_log;
+    size_t program_size, log_size;
+    int err;
+
+    /* Read program file and place content into buffer */
+    fopen_s(&program_handle, filename, "r");
+    if (program_handle == NULL) {
+        perror("Couldn't find the program file");
+        exit(1);
+    }
+    fseek(program_handle, 0, SEEK_END);
+    program_size = ftell(program_handle);
+    rewind(program_handle);
+    program_buffer = (char*)malloc(program_size + 1);
+    memset(program_buffer, 0, program_size + 1);
+    fread(program_buffer, sizeof(char), program_size, program_handle);
+    fclose(program_handle);
+
+    /* Create program from file */
+    program = clCreateProgramWithSource(ctx, 1,
+        (const char**)&program_buffer, &program_size, &err);
+    if (err < 0) {
+        perror("Couldn't create the program");
+        exit(1);
+    }
+    free(program_buffer);
+
+    /* Build program */
+    err = clBuildProgram(program, 0, NULL, "-cl-std=CL2.0", NULL, NULL);
+    if (err < 0) {
+
+        /* Find size of log and print to std output */
+        clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG,
+            0, NULL, &log_size);
+        program_log = (char*)malloc(log_size + 1);
+        program_log[log_size] = '\0';
+        clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG,
+            log_size + 1, program_log, NULL);
+        printf("%s\n", program_log);
+        free(program_log);
+        exit(1);
+    }
+
+    return program;
+}
+
+int ocl_convert()
+{
+    /* Host/device data structures */
+    cl_device_id device;
+    cl_context context;
+    cl_command_queue queue;
+    cl_program program;
+    cl_kernel kernel;
+    cl_int err;
+    size_t global_size[2];
+
+    /* Image data */
+    cl_mem input_image, output_image;
+    size_t origin[3], region[3];
+    size_t width = 320;
+    size_t height = 240;
+
+    /* Create a device and context */
+    device = create_device();
+    context = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
+    if (err < 0) {
+        perror("Couldn't create a context");
+        exit(1);
+    }
+
+    /* Build the program and create a kernel */
+    program = build_program(context, device, PROGRAM_FILE);
+    kernel = clCreateKernel(program, KERNEL_FUNC, &err);
+    if (err < 0) {
+        printf("Couldn't create a kernel: %d", err);
+        exit(1);
+    };
+
+    vector<uint8_t> pixels(width*height);
+    pixels[0] = 1;
+    pixels[1] = 2;
+    pixels[2] = 3;
+    pixels[3] = 4;
+
+    cl_image_format format = {};
+    format.image_channel_data_type = CL_UNSIGNED_INT8;
+    format.image_channel_order = CL_R;
+    cl_image_desc desc = {};
+    desc.image_type = CL_MEM_OBJECT_IMAGE2D;
+    desc.image_width = width;
+    desc.image_height = height;
+    desc.image_depth = 0;
+    desc.image_array_size = 1;
+    desc.image_row_pitch = 0;
+    desc.image_slice_pitch = 0;
+    desc.num_mip_levels = 0;
+    desc.num_samples = 0;
+    desc.mem_object = NULL;
+
+    /* Create image object */
+    input_image = clCreateImage(context,
+        CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR,
+        &format, &desc, (void*)&pixels[0], &err);
+    output_image = clCreateImage(context,
+        CL_MEM_WRITE_ONLY, &format, &desc, NULL, &err);
+    if (err < 0) {
+        perror("Couldn't create the image object");
+        exit(1);
+    };
+
+    /* Create kernel arguments */
+    err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &input_image);
+    err |= clSetKernelArg(kernel, 1, sizeof(cl_mem), &output_image);
+    if (err < 0) {
+        printf("Couldn't set a kernel argument");
+        exit(1);
+    };
+
+    /* Create a command queue */
+    const cl_command_queue_properties properties[] = { CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0 };
+    queue = clCreateCommandQueueWithProperties(context, device, properties, &err);
+    if (err < 0) {
+        perror("Couldn't create a command queue");
+        exit(1);
+    };
+
+    /* Enqueue kernel */
+    global_size[0] = height; global_size[1] = width;
+    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_size,
+        NULL, 0, NULL, NULL);
+    if (err < 0) {
+        perror("Couldn't enqueue the kernel");
+        exit(1);
+    }
+
+    vector<uint8_t> hostmem(width*height);
+
+    /* Read the image object */
+    origin[0] = 0; origin[1] = 0; origin[2] = 0;
+    region[0] = width; region[1] = height; region[2] = 1;
+    err = clEnqueueReadImage(queue, input_image, CL_TRUE, origin,
+        region, 0, 0, (void*)&hostmem[0], 0, NULL, NULL);
+    if (err < 0) {
+        perror("Couldn't read from the image object");
+        exit(1);
+    }
+
+    /* Deallocate resources */
+    clReleaseMemObject(input_image);
+    clReleaseMemObject(output_image);
+    clReleaseKernel(kernel);
+    clReleaseCommandQueue(queue);
+    clReleaseProgram(program);
+    clReleaseContext(context);
+
+    return 0;
 }
 
 int main(char argc, char** argv)
 {
-    cl_int error = CL_SUCCESS;
-    ocl_args_d_t ocl;
-    cl_device_type deviceType = CL_DEVICE_TYPE_GPU;
-
     DXVAData dxvaDecData = g_dxvaDataAVC_Short;
     HRESULT hr = S_OK;
     ID3D11Device *pD3D11Device = NULL;
@@ -184,109 +386,7 @@ int main(char argc, char** argv)
         }
     }
 
-    //initialize Open CL objects (context, queue, etc.)
-    if (CL_SUCCESS != SetupOpenCL(&ocl, deviceType, pD3D11Device))
-    {
-        return -1;
-    }
-
-    // Create and build the OpenCL program
-    if (CL_SUCCESS != CreateAndBuildProgram(&ocl))
-    {
-        return -1;
-    }
-
-    // Program consists of kernels.
-    // Each kernel can be called (enqueued) from the host part of OpenCL application.
-    // To call the kernel, you need to create it from existing program.
-    ocl.kernel = clCreateKernel(ocl.program, "Scale", &error);
-    if (CL_SUCCESS != error)
-    {
-        LogError("Error: clCreateKernel returned %s\n", TranslateOpenCLError(error));
-        return -1;
-    }
-
-    // create OCL memory from D3D11 resource
-    cl_mem sharedDecodeRT;
-    sharedDecodeRT = ocl.clCreateFromD3D11Texture2DKHR(ocl.context, CL_MEM_READ_WRITE, pSurfaceDecodeNV12, 0, &error);
-    if (CL_SUCCESS != error)
-    {
-        LogError("Error: clCreateFromD3D11Texture2DKHR returned %s\n", TranslateOpenCLError(error));
-        return -1;
-    }
-
-    // Acquire D3D11 object
-    error = ocl.clEnqueueAcquireD3D11ObjectsKHR(ocl.commandQueue, 1, &sharedDecodeRT, 0, NULL, NULL);
-    if (CL_SUCCESS != error)
-    {
-        LogError("Error: clCreateFromD3D11Texture2DKHR returned %s\n", TranslateOpenCLError(error));
-        return -1;
-    }
-
-    error = clSetKernelArg(ocl.kernel, 0, sizeof(cl_mem), (void *)&sharedDecodeRT);
-    if (CL_SUCCESS != error)
-    {
-        LogError("error: Failed to set argument, returned %s\n", TranslateOpenCLError(error));
-        return -1;
-    }
-
-    // execute kernel
-    size_t globalWorkSize[2] = { dxvaDecData.picWidth, dxvaDecData.picHeight };
-    error = clEnqueueNDRangeKernel(ocl.commandQueue, ocl.kernel, 2, NULL, globalWorkSize, NULL, 0, NULL, NULL);
-    if (CL_SUCCESS != error)
-    {
-        LogError("Error: Failed to run kernel, return %s\n", TranslateOpenCLError(error));
-        return -1;
-    }
-
-    // Wait until the queued kernel is completed by the device
-    error = clFinish(ocl.commandQueue);
-    if (CL_SUCCESS != error)
-    {
-        LogError("Error: clFinish return %s\n", TranslateOpenCLError(error));
-        return -1;
-    }
-
-    // Release D3D11 object
-    error = ocl.clEnqueueReleaseD3D11ObjectsKHR(ocl.commandQueue, 1, &sharedDecodeRT, 0, NULL, NULL);
-    if (CL_SUCCESS != error)
-    {
-        LogError("Error: clEnqueueReleaseD3D11ObjectsKHR returned %s\n", TranslateOpenCLError(error));
-        return -1;
-    }
-
-    if (SUCCEEDED(hr))
-    {
-        D3D11_BOX box;
-        box.left = 0,
-            box.right = dxvaDecData.picWidth,
-            box.top = 0,
-            box.bottom = dxvaDecData.picHeight,
-            box.front = 0,
-            box.back = 1;
-        pDeviceContext->CopySubresourceRegion(pSurfaceCopyStaging, 0, 0, 0, 0, pSurfaceDecodeNV12, 0, &box);
-        D3D11_MAPPED_SUBRESOURCE subRes;
-        ZeroMemory(&subRes, sizeof(subRes));
-        hr = pDeviceContext->Map(pSurfaceCopyStaging, 0, D3D11_MAP_READ, 0, &subRes);
-
-        if (SUCCEEDED(hr))
-        {
-            UINT height = dxvaDecData.picHeight;
-            BYTE *pData = (BYTE*)malloc(subRes.RowPitch * (height + height / 2));
-            if (pData)
-            {
-                CopyMemory(pData, subRes.pData, subRes.RowPitch * (height + height / 2));
-                FILE *fp;
-                char fileName[256] = {};
-                sprintf_s(fileName, 256, "out_%d_%d_nv12_ocl.yuv", subRes.RowPitch, height);
-                fopen_s(&fp, fileName, "wb");
-                fwrite(pData, subRes.RowPitch * (height + height / 2), 1, fp);
-                fclose(fp);
-                free(pData);
-            }
-            pDeviceContext->Unmap(pSurfaceCopyStaging, 0);
-        }
-    }
+    ocl_convert();
 
     FREE_RESOURCE(pDeviceContext);
     FREE_RESOURCE(pSurfaceDecodeNV12);

@@ -20,14 +20,16 @@
  * problem reports or change requests be submitted to it directly
  *****************************************************************************/
 
-#pragma once
+constant sampler_t sampler = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;
 
-// Print useful information to the default output. Same usage as with printf
-void LogInfo(const char* str, ...);
+__kernel void scale(read_write image2d_t src_image, write_only image2d_t dst_image) 
+{
+   /* Read pixel value */
+   int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
-// Print error notification to the default output. Same usage as with printf
-void LogError(const char* str, ...);
+   uint4 pixel = read_imageui(src_image, coord);
+   write_imageui(dst_image, coord, pixel);
 
-// Read OpenCL source code from fileName and store it in source. The number of read bytes returns in sourceSize
-int ReadSourceFromFile(const char* fileName, char** source, size_t* sourceSize);
-
+   uint4 pixel2 = (uint4)( 4, 0, 0, 0);
+   write_imageui(src_image, coord, pixel2);
+}

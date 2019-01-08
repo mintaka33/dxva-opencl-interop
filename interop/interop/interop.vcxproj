@@ -132,19 +132,13 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="dxva_data.h" />
-    <ClInclude Include="dxva_dec.h" />
-    <ClInclude Include="ocl.h" />
-    <ClInclude Include="utils.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dxva_data.cpp" />
-    <ClCompile Include="dxva_dec.cpp" />
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="ocl.cpp" />
-    <ClCompile Include="utils.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="add.cl" />
+    <None Include="convert.cl" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
