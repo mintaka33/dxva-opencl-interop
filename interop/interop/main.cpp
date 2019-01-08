@@ -26,7 +26,7 @@ using namespace std;
 #define KERNEL_FUNC "scale"
 
 /* Find a GPU or CPU associated with the first available platform */
-cl_device_id create_device()
+cl_device_id createDevice()
 {
     cl_platform_id platform;
     cl_device_id dev;
@@ -53,7 +53,7 @@ cl_device_id create_device()
 }
 
 /* Create program from a file and compile it */
-cl_program build_program(cl_context ctx, cl_device_id dev, const char* filename)
+cl_program buildProgram(cl_context ctx, cl_device_id dev, const char* filename)
 {
     cl_program program;
     FILE *program_handle;
@@ -103,7 +103,7 @@ cl_program build_program(cl_context ctx, cl_device_id dev, const char* filename)
     return program;
 }
 
-int ocl_convert()
+int oclConvert(ID3D11Device *pD3D11Device, size_t width, size_t height)
 {
     /* Host/device data structures */
     cl_device_id device;
@@ -117,11 +117,9 @@ int ocl_convert()
     /* Image data */
     cl_mem input_image, output_image;
     size_t origin[3], region[3];
-    size_t width = 320;
-    size_t height = 240;
 
     /* Create a device and context */
-    device = create_device();
+    device = createDevice();
     context = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
     if (err < 0) {
         perror("Couldn't create a context");
@@ -129,7 +127,7 @@ int ocl_convert()
     }
 
     /* Build the program and create a kernel */
-    program = build_program(context, device, PROGRAM_FILE);
+    program = buildProgram(context, device, PROGRAM_FILE);
     kernel = clCreateKernel(program, KERNEL_FUNC, &err);
     if (err < 0) {
         printf("Couldn't create a kernel: %d", err);
@@ -353,6 +351,8 @@ int main(char argc, char** argv)
         hr = pVideoContext->DecoderEndFrame(pVideoDecoder);
     }
 
+    oclConvert(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight);
+
     if (SUCCEEDED(hr))
     {
         D3D11_BOX box;
@@ -385,8 +385,6 @@ int main(char argc, char** argv)
             pDeviceContext->Unmap(pSurfaceCopyStaging, 0);
         }
     }
-
-    ocl_convert();
 
     FREE_RESOURCE(pDeviceContext);
     FREE_RESOURCE(pSurfaceDecodeNV12);
