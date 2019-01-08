@@ -169,7 +169,7 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     };
     context = clCreateContextFromType(contextProperties, CL_DEVICE_TYPE_GPU, NULL, NULL, &err);
     if (err < 0) {
-        perror("Couldn't create a context");
+        printf("Couldn't create a context\n");
         exit(1);
     }
 
@@ -177,7 +177,7 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     program = buildProgram(context, device, PROGRAM_FILE);
     kernel = clCreateKernel(program, KERNEL_FUNC, &err);
     if (err < 0) {
-        printf("Couldn't create a kernel: %d", err);
+        printf("Couldn't create a kernel: %d\n", err);
         exit(1);
     };
 
@@ -185,7 +185,7 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     const cl_command_queue_properties properties[] = { CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0 };
     queue = clCreateCommandQueueWithProperties(context, device, properties, &err);
     if (err < 0) {
-        perror("Couldn't create a command queue");
+        printf("Couldn't create a command queue\n");
         exit(1);
     };
 
@@ -194,13 +194,13 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     cl_mem sharedImageY;
     sharedImageY = clCreateFromD3D11Texture2DKHR(context, CL_MEM_READ_WRITE, pDecodeNV12, 0, &err);
     if (err < 0) {
-        printf("Failed to call clCreateFromD3D11Texture2DKHR: %d", err);
+        printf("Failed to call clCreateFromD3D11Texture2DKHR: %d\n", err);
         exit(1);
     };
 
     err = clEnqueueAcquireD3D11ObjectsKHR(queue, 1, &sharedImageY, 0, NULL, NULL);
     if (err < 0) {
-        printf("Failed to call clEnqueueAcquireD3D11ObjectsKHR: %d", err);
+        printf("Failed to call clEnqueueAcquireD3D11ObjectsKHR: %d\n", err);
         exit(1);
     };
 
@@ -209,7 +209,7 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     /* Create kernel arguments */
     err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &sharedImageY);
     if (err < 0) {
-        printf("Couldn't set a kernel argument");
+        printf("Couldn't set a kernel argument\n");
         exit(1);
     };
 
@@ -218,7 +218,14 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_size,
         NULL, 0, NULL, NULL);
     if (err < 0) {
-        perror("Couldn't enqueue the kernel");
+        printf("Couldn't enqueue the kernel\n");
+        exit(1);
+    }
+
+    // Wait until the queued kernel is completed by the device
+    err = clFinish(queue);
+    if (err < 0) {
+        printf("Failed to call clFinish\n");
         exit(1);
     }
 
@@ -229,13 +236,13 @@ int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
     err = clEnqueueReadImage(queue, sharedImageY, CL_TRUE, origin,
         region, 0, 0, (void*)&hostMem[0], 0, NULL, NULL);
     if (err < 0) {
-        perror("Couldn't read from the image object");
+        printf("Couldn't read from the image object\n");
         exit(1);
     }
 
     err = clEnqueueReleaseD3D11ObjectsKHR(queue, 1, &sharedImageY, 0, NULL, NULL);
     if (err < 0) {
-        printf("Failed to call clEnqueueReleaseD3D11ObjectsKHR: %d", err);
+        printf("Failed to call clEnqueueReleaseD3D11ObjectsKHR: %d\n", err);
         exit(1);
     };
 
