@@ -27,7 +27,7 @@ __kernel void scale(read_write image2d_t image)
    int2 coord = (int2)(get_global_id(0), get_global_id(1));
 
    uint4 pixel = read_imageui(image, coord);
-   uint4 pixel2 = pixel / 2;
+   uint4 pixel2 = (uint4)(5, 0, 0, 0); //pixel / 2;
 
    write_imageui(image, coord, pixel2);
 }
