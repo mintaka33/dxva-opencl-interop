@@ -144,7 +144,7 @@ void queryImageObjectInfo(cl_mem memObj)
     return;
 }
 
-int oclProcessInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, ID3D11Texture2D *pDecodeNV12)
+int oclProcessDecodeRT(ID3D11Device *pD3D11Device, size_t width, size_t height, ID3D11Texture2D *pDecodeNV12)
 {
     /* Host/device data structures */
     cl_platform_id platform;
@@ -392,7 +392,7 @@ int main(char argc, char** argv)
         hr = pVideoContext->DecoderEndFrame(pVideoDecoder);
     }
 
-    oclProcessInPlace(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight, pSurfaceDecodeNV12);
+    oclProcessDecodeRT(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight, pSurfaceDecodeNV12);
 
     if (SUCCEEDED(hr))
     {
