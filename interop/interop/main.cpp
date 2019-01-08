@@ -30,9 +30,8 @@ clEnqueueAcquireD3D11ObjectsKHR_fn clEnqueueAcquireD3D11ObjectsKHR = NULL;
 clEnqueueReleaseD3D11ObjectsKHR_fn clEnqueueReleaseD3D11ObjectsKHR = NULL;
 
 /* Find a GPU or CPU associated with the first available platform */
-cl_device_id createDevice()
+cl_device_id createDevice(cl_platform_id &platform)
 {
-    cl_platform_id platform;
     cl_device_id dev;
     int err;
 
@@ -117,6 +116,7 @@ cl_program buildProgram(cl_context ctx, cl_device_id dev, const char* filename)
 int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height)
 {
     /* Host/device data structures */
+    cl_platform_id platform;
     cl_device_id device;
     cl_context context;
     cl_command_queue queue;
@@ -129,9 +129,17 @@ int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height)
     cl_mem inOutImage;
     size_t origin[3], region[3];
 
-    /* Create a device and context */
-    device = createDevice();
-    context = clCreateContext(NULL, 1, &device, NULL, NULL, &err);
+    /* Create a device */
+    device = createDevice(platform);
+
+    /* Create a context */
+    cl_context_properties contextProperties[] = {
+        CL_CONTEXT_PLATFORM, (cl_context_properties)platform,
+        CL_CONTEXT_D3D11_DEVICE_KHR, (cl_context_properties)(pD3D11Device),
+        CL_CONTEXT_INTEROP_USER_SYNC, CL_FALSE,
+        0
+    };
+    context = clCreateContextFromType(contextProperties, CL_DEVICE_TYPE_GPU, NULL, NULL, &err);
     if (err < 0) {
         perror("Couldn't create a context");
         exit(1);
