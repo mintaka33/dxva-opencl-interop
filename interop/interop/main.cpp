@@ -113,7 +113,7 @@ cl_program buildProgram(cl_context ctx, cl_device_id dev, const char* filename)
     return program;
 }
 
-int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height)
+int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, ID3D11Texture2D *pDecodeNV12)
 {
     /* Host/device data structures */
     cl_platform_id platform;
@@ -150,6 +150,13 @@ int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height)
     kernel = clCreateKernel(program, KERNEL_FUNC, &err);
     if (err < 0) {
         printf("Couldn't create a kernel: %d", err);
+        exit(1);
+    };
+
+    cl_mem sharedImg;
+    sharedImg = clCreateFromD3D11Texture2DKHR(context, CL_MEM_READ_WRITE, pDecodeNV12, 0, &err);
+    if (err < 0) {
+        printf("Failed to call clCreateFromD3D11Texture2DKHR: %d", err);
         exit(1);
     };
 
@@ -365,7 +372,7 @@ int main(char argc, char** argv)
         hr = pVideoContext->DecoderEndFrame(pVideoDecoder);
     }
 
-    oclConvertInPlace(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight);
+    oclConvertInPlace(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight, pSurfaceDecodeNV12);
 
     if (SUCCEEDED(hr))
     {
