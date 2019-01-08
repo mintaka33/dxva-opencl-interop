@@ -153,10 +153,24 @@ int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
         exit(1);
     };
 
+    /* Create a command queue */
+    const cl_command_queue_properties properties[] = { CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0 };
+    queue = clCreateCommandQueueWithProperties(context, device, properties, &err);
+    if (err < 0) {
+        perror("Couldn't create a command queue");
+        exit(1);
+    };
+
     cl_mem sharedImg;
     sharedImg = clCreateFromD3D11Texture2DKHR(context, CL_MEM_READ_WRITE, pDecodeNV12, 0, &err);
     if (err < 0) {
         printf("Failed to call clCreateFromD3D11Texture2DKHR: %d", err);
+        exit(1);
+    };
+
+    err = clEnqueueAcquireD3D11ObjectsKHR(queue, 1, &sharedImg, 0, NULL, NULL);
+    if (err < 0) {
+        printf("Failed to call clEnqueueAcquireD3D11ObjectsKHR: %d", err);
         exit(1);
     };
 
@@ -197,13 +211,7 @@ int oclConvertInPlace(ID3D11Device *pD3D11Device, size_t width, size_t height, I
         exit(1);
     };
 
-    /* Create a command queue */
-    const cl_command_queue_properties properties[] = { CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0 };
-    queue = clCreateCommandQueueWithProperties(context, device, properties, &err);
-    if (err < 0) {
-        perror("Couldn't create a command queue");
-        exit(1);
-    };
+
 
     /* Enqueue kernel */
     global_size[0] = height; global_size[1] = width;
