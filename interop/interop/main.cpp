@@ -25,8 +25,6 @@ using namespace std;
 #define CHECK_OCL_ERROR(err, msg) \
     if (err < 0) { printf("ERROR: %s\n", msg); return -1; }
 
-using namespace std;
-
 #define PROGRAM_FILE "convert.cl"
 #define KERNEL_FUNC "scale"
 
@@ -264,7 +262,7 @@ int main(char argc, char** argv)
     descRT.Usage = D3D11_USAGE_DEFAULT; // D3D11_USAGE 
     descRT.BindFlags = D3D11_BIND_DECODER;
     descRT.CPUAccessFlags = 0;
-    descRT.MiscFlags = 0;
+    descRT.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
     hr = pD3D11Device->CreateTexture2D(&descRT, NULL, &pSurfaceDecodeNV12);
     CHECK_SUCCESS(hr, "CreateTexture2D");
 
