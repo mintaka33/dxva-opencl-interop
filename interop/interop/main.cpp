@@ -20,7 +20,10 @@ using namespace std;
     if(res) {res->Release(); res = NULL;}
 
 #define CHECK_SUCCESS(hr, msg) \
-    if (!SUCCEEDED(hr)) { printf("Failed to call %s\n", msg); return -1; }
+    if (!SUCCEEDED(hr)) { printf("ERROR: Failed to call %s\n", msg); return -1; }
+
+#define CHECK_OCL_ERROR(err, msg) \
+    if (err < 0) { printf("ERROR: %s\n", msg); return -1; }
 
 using namespace std;
 
@@ -31,28 +34,21 @@ clCreateFromD3D11Texture2DKHR_fn clCreateFromD3D11Texture2DKHR = NULL;
 clEnqueueAcquireD3D11ObjectsKHR_fn clEnqueueAcquireD3D11ObjectsKHR = NULL;
 clEnqueueReleaseD3D11ObjectsKHR_fn clEnqueueReleaseD3D11ObjectsKHR = NULL;
 
-/* Find a GPU or CPU associated with the first available platform */
-cl_device_id createDevice(cl_platform_id &platform)
+int createDevice(cl_platform_id &platform, cl_device_id &dev)
 {
-    cl_device_id dev;
     int err;
 
-    /* Identify a platform */
+    // Identify a platform
     err = clGetPlatformIDs(1, &platform, NULL);
-    if (err < 0) {
-        perror("Couldn't identify a platform");
-        exit(1);
-    }
+    CHECK_OCL_ERROR(err, "Couldn't identify a platform");
 
-    /* Access a device */
+    // Access a device
     err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &dev, NULL);
-    if (err == CL_DEVICE_NOT_FOUND) {
+    if (err == CL_DEVICE_NOT_FOUND) 
+    {
         err = clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &dev, NULL);
     }
-    if (err < 0) {
-        perror("Couldn't access any devices");
-        exit(1);
-    }
+    CHECK_OCL_ERROR(err, "Couldn't access any devices");
 
     clCreateFromD3D11Texture2DKHR = (clCreateFromD3D11Texture2DKHR_fn)
         clGetExtensionFunctionAddressForPlatform(platform, "clCreateFromD3D11Texture2DKHR");
@@ -60,24 +56,29 @@ cl_device_id createDevice(cl_platform_id &platform)
         clGetExtensionFunctionAddressForPlatform(platform, "clEnqueueAcquireD3D11ObjectsKHR");
     clEnqueueReleaseD3D11ObjectsKHR = (clEnqueueReleaseD3D11ObjectsKHR_fn)
         clGetExtensionFunctionAddressForPlatform(platform, "clEnqueueReleaseD3D11ObjectsKHR");
+    if (clCreateFromD3D11Texture2DKHR == nullptr || 
+        clEnqueueAcquireD3D11ObjectsKHR == nullptr ||
+        clEnqueueReleaseD3D11ObjectsKHR == nullptr)
+    {
+        printf("Couldn't get extension functions for D3D11 sharing\n");
+        return -1;
+    }
 
-    return dev;
+    return 0;
 }
 
-/* Create program from a file and compile it */
-cl_program buildProgram(cl_context ctx, cl_device_id dev, const char* filename)
+int buildProgram(cl_context ctx, cl_device_id dev, const char* filename, cl_program &program)
 {
-    cl_program program;
     FILE *program_handle;
     char *program_buffer, *program_log;
     size_t program_size, log_size;
     int err;
 
-    /* Read program file and place content into buffer */
     fopen_s(&program_handle, filename, "r");
-    if (program_handle == NULL) {
-        perror("Couldn't find the program file");
-        exit(1);
+    if (program_handle == NULL) 
+    {
+        printf("Couldn't find the program file\n");
+        return -1;
     }
     fseek(program_handle, 0, SEEK_END);
     program_size = ftell(program_handle);
@@ -87,32 +88,26 @@ cl_program buildProgram(cl_context ctx, cl_device_id dev, const char* filename)
     fread(program_buffer, sizeof(char), program_size, program_handle);
     fclose(program_handle);
 
-    /* Create program from file */
-    program = clCreateProgramWithSource(ctx, 1,
-        (const char**)&program_buffer, &program_size, &err);
-    if (err < 0) {
-        perror("Couldn't create the program");
-        exit(1);
-    }
+    // Create program from file
+    program = clCreateProgramWithSource(ctx, 1, (const char**)&program_buffer, &program_size, &err);
+    CHECK_OCL_ERROR(err, "Couldn't create the program");
     free(program_buffer);
 
-    /* Build program */
+    // Build program
     err = clBuildProgram(program, 0, NULL, "-cl-std=CL2.0", NULL, NULL);
-    if (err < 0) {
-
-        /* Find size of log and print to std output */
-        clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG,
-            0, NULL, &log_size);
+    if (err < 0) 
+    {
+        // Find size of log and print to std output
+        clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
         program_log = (char*)malloc(log_size + 1);
-        program_log[log_size] = '\0';
-        clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG,
-            log_size + 1, program_log, NULL);
+        memset(program_log, 0, log_size + 1);
+        clGetProgramBuildInfo(program, dev, CL_PROGRAM_BUILD_LOG, log_size + 1, program_log, NULL);
         printf("%s\n", program_log);
         free(program_log);
-        exit(1);
+        return -1;
     }
 
-    return program;
+    return 0;
 }
 
 void queryImageObjectInfo(cl_mem memObj)
@@ -149,7 +144,6 @@ void queryImageObjectInfo(cl_mem memObj)
 
 int oclProcessDecodeRT(ID3D11Device *pD3D11Device, size_t width, size_t height, ID3D11Texture2D *pDecodeNV12)
 {
-    /* Host/device data structures */
     cl_platform_id platform;
     cl_device_id device;
     cl_context context;
@@ -160,10 +154,11 @@ int oclProcessDecodeRT(ID3D11Device *pD3D11Device, size_t width, size_t height, 
     size_t global_size[2];
     size_t origin[3], region[3];
 
-    /* Create a device */
-    device = createDevice(platform);
+    // Create a device
+    err = createDevice(platform, device);
+    CHECK_OCL_ERROR(err, "Couldn't create a OpenCL device");
 
-    /* Create a context */
+    // Create a context
     cl_context_properties contextProperties[] = {
         CL_CONTEXT_PLATFORM, (cl_context_properties)platform,
         CL_CONTEXT_D3D11_DEVICE_KHR, (cl_context_properties)(pD3D11Device),
@@ -171,85 +166,56 @@ int oclProcessDecodeRT(ID3D11Device *pD3D11Device, size_t width, size_t height, 
         0
     };
     context = clCreateContextFromType(contextProperties, CL_DEVICE_TYPE_GPU, NULL, NULL, &err);
-    if (err < 0) {
-        printf("Couldn't create a context\n");
-        exit(1);
-    }
+    CHECK_OCL_ERROR(err, "Couldn't create a context");
 
     /* Build the program and create a kernel */
-    program = buildProgram(context, device, PROGRAM_FILE);
-    kernel = clCreateKernel(program, KERNEL_FUNC, &err);
-    if (err < 0) {
-        printf("Couldn't create a kernel: %d\n", err);
-        exit(1);
-    };
+    err = buildProgram(context, device, PROGRAM_FILE, program);
+    CHECK_OCL_ERROR(err, "Couldn't build program");
 
-    /* Create a command queue */
+    kernel = clCreateKernel(program, KERNEL_FUNC, &err);
+    CHECK_OCL_ERROR(err, "Couldn't create a kernel");
+
+    // Create a command queue
     const cl_command_queue_properties properties[] = { CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0 };
     queue = clCreateCommandQueueWithProperties(context, device, properties, &err);
-    if (err < 0) {
-        printf("Couldn't create a command queue\n");
-        exit(1);
-    };
+    CHECK_OCL_ERROR(err, "Couldn't create a command queue");
 
     // Note: the image format of sharedImageY created from NV12 d3d11 texture is 
     // image_channel_data_type = CL_UNORM_INT8, image_channel_order = CL_R;
     cl_mem sharedImageY;
     sharedImageY = clCreateFromD3D11Texture2DKHR(context, CL_MEM_READ_WRITE, pDecodeNV12, 0, &err);
-    if (err < 0) {
-        printf("Failed to call clCreateFromD3D11Texture2DKHR: %d\n", err);
-        exit(1);
-    };
+    CHECK_OCL_ERROR(err, "Failed to call clCreateFromD3D11Texture2DKHR");
 
     err = clEnqueueAcquireD3D11ObjectsKHR(queue, 1, &sharedImageY, 0, NULL, NULL);
-    if (err < 0) {
-        printf("Failed to call clEnqueueAcquireD3D11ObjectsKHR: %d\n", err);
-        exit(1);
-    };
+    CHECK_OCL_ERROR(err, "Failed to call clEnqueueAcquireD3D11ObjectsKHR");
 
+    // Query image info
     queryImageObjectInfo(sharedImageY);
 
-    /* Create kernel arguments */
+    // Create kernel arguments
     err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &sharedImageY);
-    if (err < 0) {
-        printf("Couldn't set a kernel argument\n");
-        exit(1);
-    };
+    CHECK_OCL_ERROR(err, "Couldn't set a kernel argument");
 
-    /* Enqueue kernel */
+    // Enqueue kernel
     global_size[0] = height; global_size[1] = width;
-    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_size,
-        NULL, 0, NULL, NULL);
-    if (err < 0) {
-        printf("Couldn't enqueue the kernel\n");
-        exit(1);
-    }
+    err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_size, NULL, 0, NULL, NULL);
+    CHECK_OCL_ERROR(err, "Couldn't enqueue the kernel");
 
     // Wait until the queued kernel is completed by the device
     err = clFinish(queue);
-    if (err < 0) {
-        printf("Failed to call clFinish\n");
-        exit(1);
-    }
+    CHECK_OCL_ERROR(err, "Failed to call clFinish");
 
-    /* Read the image object */
+    // Read the image object
     vector<uint8_t> hostMem(width*height);
     origin[0] = 0; origin[1] = 0; origin[2] = 0;
     region[0] = width; region[1] = height; region[2] = 1;
-    err = clEnqueueReadImage(queue, sharedImageY, CL_TRUE, origin,
-        region, 0, 0, (void*)&hostMem[0], 0, NULL, NULL);
-    if (err < 0) {
-        printf("Couldn't read from the image object\n");
-        exit(1);
-    }
+    err = clEnqueueReadImage(queue, sharedImageY, CL_TRUE, origin, region, 0, 0, (void*)&hostMem[0], 0, NULL, NULL);
+    CHECK_OCL_ERROR(err, "Couldn't read from the image object");
 
     err = clEnqueueReleaseD3D11ObjectsKHR(queue, 1, &sharedImageY, 0, NULL, NULL);
-    if (err < 0) {
-        printf("Failed to call clEnqueueReleaseD3D11ObjectsKHR: %d\n", err);
-        exit(1);
-    };
+    CHECK_OCL_ERROR(err, "Failed to call clEnqueueReleaseD3D11ObjectsKHR");
 
-    /* Deallocate resources */
+    // Deallocate resources
     clReleaseKernel(kernel);
     clReleaseCommandQueue(queue);
     clReleaseProgram(program);
@@ -335,7 +301,7 @@ int main(char argc, char** argv)
         CHECK_SUCCESS(hr, "GetVideoDecoderProfile");
         OLECHAR sGUID[64] = { 0 };
         StringFromGUID2(decoderGUID, sGUID, 64);
-        wprintf(L"INFO: Index %02d - GUID = %s\n", i, sGUID);
+        //wprintf(L"INFO: Index %02d - GUID = %s\n", i, sGUID);
     }
 
     ID3D11VideoContext* pVideoContext = NULL;
@@ -374,13 +340,21 @@ int main(char argc, char** argv)
     // Decode end frame
     hr = pVideoContext->DecoderEndFrame(pVideoDecoder);
     CHECK_SUCCESS(hr, "DecoderEndFrame");
-    printf("decode success\n");
+
+    printf("INFO: decode success\n");
 
     // Invoke OpenCL kernel to modify decode output surface in place
-    oclProcessDecodeRT(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight, pSurfaceDecodeNV12);
+    int ret = oclProcessDecodeRT(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight, pSurfaceDecodeNV12);
+    if (ret != 0)
+    {
+        printf("OpenCL process decode RT failed!\n");
+        return -1;
+    }
+
+    printf("INFO: OCL process success\n");
 
     // Map decode surface and dump NV12 to file
-    if (SUCCEEDED(hr))
+    if (1)
     {
         D3D11_BOX box;
         box.left = 0,
@@ -393,24 +367,22 @@ int main(char argc, char** argv)
         D3D11_MAPPED_SUBRESOURCE subRes;
         ZeroMemory(&subRes, sizeof(subRes));
         hr = pDeviceContext->Map(pSurfaceCopyStaging, 0, D3D11_MAP_READ, 0, &subRes);
+        CHECK_SUCCESS(hr, "Map");
 
-        if (SUCCEEDED(hr))
+        UINT height = dxvaDecData.picHeight;
+        BYTE *pData = (BYTE*)malloc(subRes.RowPitch * (height + height / 2));
+        if (pData)
         {
-            UINT height = dxvaDecData.picHeight;
-            BYTE *pData = (BYTE*)malloc(subRes.RowPitch * (height + height / 2));
-            if (pData)
-            {
-                CopyMemory(pData, subRes.pData, subRes.RowPitch * (height + height / 2));
-                FILE *fp;
-                char fileName[256] = {};
-                sprintf_s(fileName, 256, "out_%d_%d_nv12.yuv", subRes.RowPitch, height);
-                fopen_s(&fp, fileName, "wb");
-                fwrite(pData, subRes.RowPitch * (height + height / 2), 1, fp);
-                fclose(fp);
-                free(pData);
-            }
-            pDeviceContext->Unmap(pSurfaceCopyStaging, 0);
+            CopyMemory(pData, subRes.pData, subRes.RowPitch * (height + height / 2));
+            FILE *fp;
+            char fileName[256] = {};
+            sprintf_s(fileName, 256, "out_%d_%d_nv12.yuv", subRes.RowPitch, height);
+            fopen_s(&fp, fileName, "wb");
+            fwrite(pData, subRes.RowPitch * (height + height / 2), 1, fp);
+            fclose(fp);
+            free(pData);
         }
+        pDeviceContext->Unmap(pSurfaceCopyStaging, 0);
     }
 
     FREE_RESOURCE(pDeviceContext);
@@ -422,7 +394,7 @@ int main(char argc, char** argv)
     FREE_RESOURCE(pVideoContext);
     FREE_RESOURCE(pD3D11Device);
 
-    printf("execution done. \n");
+    printf("INFO: execution done. \n");
 
     return 0;
 }
