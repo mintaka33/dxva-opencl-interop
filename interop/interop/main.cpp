@@ -159,7 +159,7 @@ int oclInitialize(ID3D11Device *pD3D11Device)
     cl_context_properties contextProperties[] = {
         CL_CONTEXT_PLATFORM, (cl_context_properties)platform,
         CL_CONTEXT_D3D11_DEVICE_KHR, (cl_context_properties)(pD3D11Device),
-        CL_CONTEXT_INTEROP_USER_SYNC, CL_FALSE,
+        CL_CONTEXT_INTEROP_USER_SYNC, CL_TRUE,
         0
     };
     context = clCreateContextFromType(contextProperties, CL_DEVICE_TYPE_GPU, NULL, NULL, &err);
