@@ -19,6 +19,9 @@ using namespace std;
 #define FREE_RESOURCE(res) \
     if(res) {res->Release(); res = NULL;}
 
+#define CHECK_SUCCESS(hr, msg) \
+    if (!SUCCEEDED(hr)) { printf("Failed to call %s\n", msg); return -1; }
+
 using namespace std;
 
 #define PROGRAM_FILE "convert.cl"
@@ -267,133 +270,116 @@ int main(char argc, char** argv)
 
     hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, levels, 1,
         D3D11_SDK_VERSION, &pD3D11Device, &fl, &pDeviceContext);
+    CHECK_SUCCESS(hr, "D3D11CreateDevice");
 
     ID3D11VideoDevice * pD3D11VideoDevice = NULL;
-    if (SUCCEEDED(hr))
-    {
-        hr = pD3D11Device->QueryInterface(&pD3D11VideoDevice);
-    }
+    hr = pD3D11Device->QueryInterface(&pD3D11VideoDevice);
+    CHECK_SUCCESS(hr, "QueryInterface");
 
     ID3D11VideoDecoder *pVideoDecoder = NULL;
-    if (SUCCEEDED(hr))
-    {
-        D3D11_VIDEO_DECODER_DESC desc = { 0 };
-        desc.Guid = profile;
-        desc.SampleWidth = dxvaDecData.picWidth;
-        desc.SampleHeight = dxvaDecData.picHeight;
-        desc.OutputFormat = DXGI_FORMAT_NV12;
-        D3D11_VIDEO_DECODER_CONFIG config = { 0 };
-        config.ConfigBitstreamRaw = dxvaDecData.isShortFormat; // 0: long format; 1: short format
-        hr = pD3D11VideoDevice->CreateVideoDecoder(&desc, &config, &pVideoDecoder);
-    }
+    D3D11_VIDEO_DECODER_DESC decoderDesc = { 0 };
+    decoderDesc.Guid = profile;
+    decoderDesc.SampleWidth = dxvaDecData.picWidth;
+    decoderDesc.SampleHeight = dxvaDecData.picHeight;
+    decoderDesc.OutputFormat = DXGI_FORMAT_NV12;
+    D3D11_VIDEO_DECODER_CONFIG config = { 0 };
+    config.ConfigBitstreamRaw = dxvaDecData.isShortFormat; // 0: long format; 1: short format
+    hr = pD3D11VideoDevice->CreateVideoDecoder(&decoderDesc, &config, &pVideoDecoder);
+    CHECK_SUCCESS(hr, "CreateVideoDecoder");
 
     ID3D11Texture2D *pSurfaceDecodeNV12 = NULL;
-    if (SUCCEEDED(hr))
-    {
-        D3D11_TEXTURE2D_DESC descRT = { 0 };
-        descRT.Width = dxvaDecData.picWidth;
-        descRT.Height = dxvaDecData.picHeight;
-        descRT.MipLevels = 1;
-        descRT.ArraySize = 1;
-        descRT.Format = DXGI_FORMAT_NV12;
-        descRT.SampleDesc = { 1, 0 }; // DXGI_SAMPLE_DESC 
-        descRT.Usage = D3D11_USAGE_DEFAULT; // D3D11_USAGE 
-        descRT.BindFlags = D3D11_BIND_DECODER;
-        descRT.CPUAccessFlags = 0;
-        descRT.MiscFlags = 0;
-        hr = pD3D11Device->CreateTexture2D(&descRT, NULL, &pSurfaceDecodeNV12);
-    }
+    D3D11_TEXTURE2D_DESC descRT = { 0 };
+    descRT.Width = dxvaDecData.picWidth;
+    descRT.Height = dxvaDecData.picHeight;
+    descRT.MipLevels = 1;
+    descRT.ArraySize = 1;
+    descRT.Format = DXGI_FORMAT_NV12;
+    descRT.SampleDesc = { 1, 0 }; // DXGI_SAMPLE_DESC 
+    descRT.Usage = D3D11_USAGE_DEFAULT; // D3D11_USAGE 
+    descRT.BindFlags = D3D11_BIND_DECODER;
+    descRT.CPUAccessFlags = 0;
+    descRT.MiscFlags = 0;
+    hr = pD3D11Device->CreateTexture2D(&descRT, NULL, &pSurfaceDecodeNV12);
+    CHECK_SUCCESS(hr, "CreateTexture2D");
 
     ID3D11Texture2D *pSurfaceCopyStaging = NULL;
-    if (SUCCEEDED(hr))
-    {
-        D3D11_TEXTURE2D_DESC descRT = { 0 };
-        descRT.Width = dxvaDecData.picWidth;
-        descRT.Height = dxvaDecData.picHeight;
-        descRT.MipLevels = 1;
-        descRT.ArraySize = 1;
-        descRT.Format = DXGI_FORMAT_NV12;
-        descRT.SampleDesc = { 1, 0 }; // DXGI_SAMPLE_DESC 
-        descRT.Usage = D3D11_USAGE_STAGING; // D3D11_USAGE 
-        descRT.BindFlags = 0;
-        descRT.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-        descRT.MiscFlags = 0;
-        hr = pD3D11Device->CreateTexture2D(&descRT, NULL, &pSurfaceCopyStaging);
-    }
+    D3D11_TEXTURE2D_DESC descStaging = { 0 };
+    descStaging.Width = dxvaDecData.picWidth;
+    descStaging.Height = dxvaDecData.picHeight;
+    descStaging.MipLevels = 1;
+    descStaging.ArraySize = 1;
+    descStaging.Format = DXGI_FORMAT_NV12;
+    descStaging.SampleDesc = { 1, 0 }; // DXGI_SAMPLE_DESC 
+    descStaging.Usage = D3D11_USAGE_STAGING; // D3D11_USAGE 
+    descStaging.BindFlags = 0;
+    descStaging.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+    descStaging.MiscFlags = 0;
+    hr = pD3D11Device->CreateTexture2D(&descStaging, NULL, &pSurfaceCopyStaging);
+    CHECK_SUCCESS(hr, "CreateTexture2D");
 
     ID3D11VideoDecoderOutputView *pDecodeOutputView = NULL;
-    if (SUCCEEDED(hr))
-    {
-        D3D11_VIDEO_DECODER_OUTPUT_VIEW_DESC desc = { 0 };
-        desc.DecodeProfile = profile;
-        desc.ViewDimension = D3D11_VDOV_DIMENSION_TEXTURE2D;
-        hr = pD3D11VideoDevice->CreateVideoDecoderOutputView(pSurfaceDecodeNV12, &desc, &pDecodeOutputView);
-    }
+    D3D11_VIDEO_DECODER_OUTPUT_VIEW_DESC viewDesc = { 0 };
+    viewDesc.DecodeProfile = profile;
+    viewDesc.ViewDimension = D3D11_VDOV_DIMENSION_TEXTURE2D;
+    hr = pD3D11VideoDevice->CreateVideoDecoderOutputView(pSurfaceDecodeNV12, &viewDesc, &pDecodeOutputView);
+    CHECK_SUCCESS(hr, "CreateVideoDecoderOutputView");
 
     UINT profileCount = 0;
     GUID decoderGUID = {};
-    if (SUCCEEDED(hr))
-    {
-        profileCount = pD3D11VideoDevice->GetVideoDecoderProfileCount();
-        printf("INFO: Decoder Profile Count = %d\n", profileCount);
+    profileCount = pD3D11VideoDevice->GetVideoDecoderProfileCount();
+    printf("INFO: Decoder Profile Count = %d\n", profileCount);
 
-        for (UINT i = 0; i < profileCount; i++)
-        {
-            hr = pD3D11VideoDevice->GetVideoDecoderProfile(i, &decoderGUID);
-            if (SUCCEEDED(hr))
-            {
-                OLECHAR sGUID[64] = { 0 };
-                StringFromGUID2(decoderGUID, sGUID, 64);
-                wprintf(L"INFO: Index %02d - GUID = %s\n", i, sGUID);
-            }
-        }
+    for (UINT i = 0; i < profileCount; i++)
+    {
+        hr = pD3D11VideoDevice->GetVideoDecoderProfile(i, &decoderGUID);
+        CHECK_SUCCESS(hr, "GetVideoDecoderProfile");
+        OLECHAR sGUID[64] = { 0 };
+        StringFromGUID2(decoderGUID, sGUID, 64);
+        wprintf(L"INFO: Index %02d - GUID = %s\n", i, sGUID);
     }
 
     ID3D11VideoContext* pVideoContext = NULL;
-    if (SUCCEEDED(hr))
+    hr = pDeviceContext->QueryInterface(&pVideoContext);
+    CHECK_SUCCESS(hr, "QueryInterface");
+
+    // Decode begin frame
+    hr = pVideoContext->DecoderBeginFrame(pVideoDecoder, pDecodeOutputView, 0, 0);
+    CHECK_SUCCESS(hr, "DecoderBeginFrame");
+
+    // Prepare DXVA buffers for decoding
+    UINT sizeDesc = sizeof(D3D11_VIDEO_DECODER_BUFFER_DESC) * dxvaDecData.dxvaBufNum;
+    D3D11_VIDEO_DECODER_BUFFER_DESC *descDecBuffers = new D3D11_VIDEO_DECODER_BUFFER_DESC[dxvaDecData.dxvaBufNum];
+    memset(descDecBuffers, 0, sizeDesc);
+    for (UINT i = 0; i < dxvaDecData.dxvaBufNum; i++)
     {
-        hr = pDeviceContext->QueryInterface(&pVideoContext);
+        BYTE* buffer = 0;
+        UINT bufferSize = 0;
+        descDecBuffers[i].BufferIndex = i;
+        descDecBuffers[i].BufferType = dxvaDecData.dxvaDecBuffers[i].bufType;
+        descDecBuffers[i].DataSize = dxvaDecData.dxvaDecBuffers[i].bufSize;
+
+        hr = pVideoContext->GetDecoderBuffer(pVideoDecoder, descDecBuffers[i].BufferType, &bufferSize, reinterpret_cast<void**>(&buffer));
+        CHECK_SUCCESS(hr, "GetDecoderBuffer");
+        UINT copySize = min(bufferSize, descDecBuffers[i].DataSize);
+        memcpy_s(buffer, copySize, dxvaDecData.dxvaDecBuffers[i].pBufData, copySize);
+        hr = pVideoContext->ReleaseDecoderBuffer(pVideoDecoder, descDecBuffers[i].BufferType);
+        CHECK_SUCCESS(hr, "ReleaseDecoderBuffer");
     }
 
-    if (SUCCEEDED(hr))
-    {
-        hr = pVideoContext->DecoderBeginFrame(pVideoDecoder, pDecodeOutputView, 0, 0);
-    }
+    // Submit decode workload to GPU
+    hr = pVideoContext->SubmitDecoderBuffers(pVideoDecoder, dxvaDecData.dxvaBufNum, descDecBuffers);
+    CHECK_SUCCESS(hr, "SubmitDecoderBuffers");
+    delete[] descDecBuffers;
 
-    if (SUCCEEDED(hr))
-    {
-        UINT sizeDesc = sizeof(D3D11_VIDEO_DECODER_BUFFER_DESC) * dxvaDecData.dxvaBufNum;
-        D3D11_VIDEO_DECODER_BUFFER_DESC *descDecBuffers = new D3D11_VIDEO_DECODER_BUFFER_DESC[dxvaDecData.dxvaBufNum];
-        memset(descDecBuffers, 0, sizeDesc);
+    // Decode end frame
+    hr = pVideoContext->DecoderEndFrame(pVideoDecoder);
+    CHECK_SUCCESS(hr, "DecoderEndFrame");
+    printf("decode success\n");
 
-        for (UINT i = 0; i < dxvaDecData.dxvaBufNum; i++)
-        {
-            BYTE* buffer = 0;
-            UINT bufferSize = 0;
-            descDecBuffers[i].BufferIndex = i;
-            descDecBuffers[i].BufferType = dxvaDecData.dxvaDecBuffers[i].bufType;
-            descDecBuffers[i].DataSize = dxvaDecData.dxvaDecBuffers[i].bufSize;
-
-            hr = pVideoContext->GetDecoderBuffer(pVideoDecoder, descDecBuffers[i].BufferType, &bufferSize, reinterpret_cast<void**>(&buffer));
-            if (SUCCEEDED(hr))
-            {
-                UINT copySize = min(bufferSize, descDecBuffers[i].DataSize);
-                memcpy_s(buffer, copySize, dxvaDecData.dxvaDecBuffers[i].pBufData, copySize);
-                hr = pVideoContext->ReleaseDecoderBuffer(pVideoDecoder, descDecBuffers[i].BufferType);
-            }
-        }
-
-        hr = pVideoContext->SubmitDecoderBuffers(pVideoDecoder, dxvaDecData.dxvaBufNum, descDecBuffers);
-        delete[] descDecBuffers;
-    }
-
-    if (SUCCEEDED(hr))
-    {
-        hr = pVideoContext->DecoderEndFrame(pVideoDecoder);
-    }
-
+    // Invoke OpenCL kernel to modify decode output surface in place
     oclProcessDecodeRT(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight, pSurfaceDecodeNV12);
 
+    // Map decode surface and dump NV12 to file
     if (SUCCEEDED(hr))
     {
         D3D11_BOX box;
@@ -436,7 +422,7 @@ int main(char argc, char** argv)
     FREE_RESOURCE(pVideoContext);
     FREE_RESOURCE(pD3D11Device);
 
-    printf("Execution done. \n");
+    printf("execution done. \n");
 
     return 0;
 }
