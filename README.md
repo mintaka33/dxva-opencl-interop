@@ -1,7 +1,7 @@
 # dxva-opencl-interop
 DXVA video acceleration + OpenCL compute interoperation
 
-## set D3D11_RESOURCE_MISC_SHARED flag
+## 1. set D3D11_RESOURCE_MISC_SHARED flag
 
 To make sure real resource sharing (without additional copy) between d3d11 and opencl, we need to set **MiscFlags** as **D3D11_RESOURCE_MISC_SHARED** when create ID3D11Texture2D for decode RT, or OpenCL runtime/driver will invoke D3D11 CopySubresourceRegion API to copy the decode RT into an intermediate surface in **clEnqueueAcquireD3D11ObjectsKHR** call and copy back to decode RT surface in **clEnqueueReleaseD3D11ObjectsKHR** call. The two copy operations fianlly trigger D3D driver to submit two GPU commands in Render engine.
 
@@ -23,7 +23,7 @@ To make sure real resource sharing (without additional copy) between d3d11 and o
     CHECK_SUCCESS(hr, "CreateTexture2D");
 ```
 
-## set CL_CONTEXT_INTEROP_USER_SYNC as ture to enable user sync
+## 2. set CL_CONTEXT_INTEROP_USER_SYNC as ture to enable user sync
 
 The Direct3D 11 objects are acquired by the OpenCL context associated with command-queue and can therefore be used by all command-queues associated with the OpenCL context.
 
@@ -49,3 +49,8 @@ https://www.khronos.org/registry/OpenCL/sdk/1.2/docs/man/xhtml/clEnqueueAcquireD
     context = clCreateContextFromType(contextProperties, CL_DEVICE_TYPE_GPU, NULL, NULL, &err);
     CHECK_OCL_ERROR(err, "Couldn't create a context");
 ```
+
+## 3. execution timing
+
+![timing](https://github.com/mintaka33/dxva-opencl-interop/blob/master/interop/interop/result/timing3.png?raw=true)
+
