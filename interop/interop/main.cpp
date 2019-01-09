@@ -28,9 +28,48 @@ using namespace std;
 #define PROGRAM_FILE "convert.cl"
 #define KERNEL_FUNC "scale"
 
+cl_platform_id platform;
+cl_device_id device;
+cl_context context;
+cl_command_queue queue;
+cl_program program;
+cl_kernel kernel;
+
 clCreateFromD3D11Texture2DKHR_fn clCreateFromD3D11Texture2DKHR = NULL;
 clEnqueueAcquireD3D11ObjectsKHR_fn clEnqueueAcquireD3D11ObjectsKHR = NULL;
 clEnqueueReleaseD3D11ObjectsKHR_fn clEnqueueReleaseD3D11ObjectsKHR = NULL;
+
+void queryImageObjectInfo(cl_mem memObj)
+{
+    size_t size;
+    clGetMemObjectInfo(memObj, CL_MEM_SIZE, sizeof(size), &size, NULL);
+
+    cl_mem_object_type type;
+    clGetMemObjectInfo(memObj, CL_MEM_TYPE, sizeof(type), &type, NULL);
+
+    cl_mem_flags flags;
+    clGetMemObjectInfo(memObj, CL_MEM_FLAGS, sizeof(flags), &flags, NULL);
+
+    cl_mem associateMem;
+    clGetMemObjectInfo(memObj, CL_MEM_ASSOCIATED_MEMOBJECT, sizeof(associateMem), &associateMem, NULL);
+
+    cl_image_format format;
+    clGetImageInfo(memObj, CL_IMAGE_FORMAT, sizeof(format), &format, NULL);
+
+    size_t width;
+    clGetImageInfo(memObj, CL_IMAGE_WIDTH, sizeof(width), &width, NULL);
+
+    size_t height;
+    clGetImageInfo(memObj, CL_IMAGE_HEIGHT, sizeof(height), &height, NULL);
+
+    size_t pitch;
+    clGetImageInfo(memObj, CL_IMAGE_ROW_PITCH, sizeof(pitch), &pitch, NULL);
+
+    size_t elesize;
+    clGetImageInfo(memObj, CL_IMAGE_ELEMENT_SIZE, sizeof(elesize), &elesize, NULL);
+
+    return;
+}
 
 int createDevice(cl_platform_id &platform, cl_device_id &dev)
 {
@@ -108,49 +147,9 @@ int buildProgram(cl_context ctx, cl_device_id dev, const char* filename, cl_prog
     return 0;
 }
 
-void queryImageObjectInfo(cl_mem memObj)
+int oclInitialize(ID3D11Device *pD3D11Device)
 {
-    size_t size;
-    clGetMemObjectInfo(memObj, CL_MEM_SIZE, sizeof(size), &size, NULL);
-
-    cl_mem_object_type type;
-    clGetMemObjectInfo(memObj, CL_MEM_TYPE, sizeof(type), &type, NULL);
-
-    cl_mem_flags flags;
-    clGetMemObjectInfo(memObj, CL_MEM_FLAGS, sizeof(flags), &flags, NULL);
-
-    cl_mem associateMem;
-    clGetMemObjectInfo(memObj, CL_MEM_ASSOCIATED_MEMOBJECT, sizeof(associateMem), &associateMem, NULL);
-
-    cl_image_format format;
-    clGetImageInfo(memObj, CL_IMAGE_FORMAT, sizeof(format), &format, NULL);
-
-    size_t width;
-    clGetImageInfo(memObj, CL_IMAGE_WIDTH, sizeof(width), &width, NULL);
-
-    size_t height;
-    clGetImageInfo(memObj, CL_IMAGE_HEIGHT, sizeof(height), &height, NULL);
-
-    size_t pitch;
-    clGetImageInfo(memObj, CL_IMAGE_ROW_PITCH, sizeof(pitch), &pitch, NULL);
-
-    size_t elesize;
-    clGetImageInfo(memObj, CL_IMAGE_ELEMENT_SIZE, sizeof(elesize), &elesize, NULL);
-
-    return;
-}
-
-int oclProcessDecodeRT(ID3D11Device *pD3D11Device, size_t width, size_t height, ID3D11Texture2D *pDecodeNV12)
-{
-    cl_platform_id platform;
-    cl_device_id device;
-    cl_context context;
-    cl_command_queue queue;
-    cl_program program;
-    cl_kernel kernel;
     cl_int err;
-    size_t global_size[2];
-    size_t origin[3], region[3];
 
     // Create a device
     err = createDevice(platform, device);
@@ -177,6 +176,15 @@ int oclProcessDecodeRT(ID3D11Device *pD3D11Device, size_t width, size_t height, 
     const cl_command_queue_properties properties[] = { CL_QUEUE_PROPERTIES, CL_QUEUE_PROFILING_ENABLE, 0 };
     queue = clCreateCommandQueueWithProperties(context, device, properties, &err);
     CHECK_OCL_ERROR(err, "Couldn't create a command queue");
+
+    return 0;
+}
+
+int oclProcessDecodeRT(size_t width, size_t height, ID3D11Texture2D *pDecodeNV12)
+{
+    cl_int err;
+    size_t global_size[2];
+    size_t origin[3], region[3];
 
     // Note: the image format of sharedImageY created from NV12 d3d11 texture is 
     // image_channel_data_type = CL_UNORM_INT8, image_channel_order = CL_R;
@@ -235,6 +243,12 @@ int main(char argc, char** argv)
     hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, 0, levels, 1,
         D3D11_SDK_VERSION, &pD3D11Device, &fl, &pDeviceContext);
     CHECK_SUCCESS(hr, "D3D11CreateDevice");
+
+    if (oclInitialize(pD3D11Device) != 0)
+    {
+        printf("ERROR: failed to initialize OCL\n");
+        return -1;
+    }
 
     ID3D11VideoDevice * pD3D11VideoDevice = NULL;
     hr = pD3D11Device->QueryInterface(&pD3D11VideoDevice);
@@ -342,10 +356,10 @@ int main(char argc, char** argv)
     printf("INFO: decode success\n");
 
     // Invoke OpenCL kernel to modify decode output surface in place
-    int ret = oclProcessDecodeRT(pD3D11Device, dxvaDecData.picWidth, dxvaDecData.picHeight, pSurfaceDecodeNV12);
+    int ret = oclProcessDecodeRT(dxvaDecData.picWidth, dxvaDecData.picHeight, pSurfaceDecodeNV12);
     if (ret != 0)
     {
-        printf("OpenCL process decode RT failed!\n");
+        printf("ERROR: OpenCL process decode RT failed!\n");
         return -1;
     }
 
