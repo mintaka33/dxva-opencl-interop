@@ -17,7 +17,8 @@ To make sure real resource sharing (without additional copy) between d3d11 and o
     descRT.Usage = D3D11_USAGE_DEFAULT; 
     descRT.BindFlags = D3D11_BIND_DECODER;
     descRT.CPUAccessFlags = 0;
-    descRT.MiscFlags = D3D11_RESOURCE_MISC_SHARED; // we need to set this shared flag to make sure no additional copy
+    // set MiscFlags as shared to avoid additional copy
+    descRT.MiscFlags = D3D11_RESOURCE_MISC_SHARED; 
     hr = pD3D11Device->CreateTexture2D(&descRT, NULL, &pSurfaceDecodeNV12);
     CHECK_SUCCESS(hr, "CreateTexture2D");
 ```
