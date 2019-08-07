@@ -25,8 +25,29 @@ using namespace std;
 #define CHECK_OCL_ERROR(err, msg) \
     if (err < 0) { printf("ERROR: %s\n", msg); return -1; }
 
+#define CL_USE_DEPRECATED_OPENCL_1_1_APIS
+
+char kernel_code[] =
+"__kernel void scale(__read_write image2d_t image) \
+{ \
+    int2 coord = (int2)(get_global_id(0), get_global_id(1)); \
+    float4 pixel = read_imagef(image, coord); \
+    float4 pixel2 = pixel/4; \
+    write_imagef(image, coord, pixel2); \
+}";
+
+char kernel_code2[] =
+"__kernel void scale(__read_only image2d_t image, __write_only image2d_t result) \
+{ \
+    int2 coord = (int2)(get_global_id(0), get_global_id(1)); \
+    float4 pixel = read_imagef(image, coord); \
+    float4 pixel2 = pixel/4; \
+    write_imagef(result, coord, pixel2); \
+}";
+
 #define PROGRAM_FILE "convert.cl"
 #define KERNEL_FUNC "scale"
+static int enableReadWriteKernel = 1;
 
 cl_platform_id platform;
 cl_device_id device;
@@ -104,31 +125,15 @@ int createDevice(cl_platform_id &platform, cl_device_id &dev)
     return 0;
 }
 
-int buildProgram(cl_context ctx, cl_device_id dev, const char* filename, cl_program &program)
+int buildProgram(cl_context ctx, cl_device_id dev, const char* kernel_source, cl_program &program)
 {
-    FILE *program_handle;
-    char *program_buffer, *program_log;
-    size_t program_size, log_size;
+    char *program_log;
+    size_t program_size = strlen(kernel_source), log_size;
     int err;
 
-    fopen_s(&program_handle, filename, "r");
-    if (program_handle == NULL) 
-    {
-        printf("Couldn't find the program file\n");
-        return -1;
-    }
-    fseek(program_handle, 0, SEEK_END);
-    program_size = ftell(program_handle);
-    rewind(program_handle);
-    program_buffer = (char*)malloc(program_size + 1);
-    memset(program_buffer, 0, program_size + 1);
-    fread(program_buffer, sizeof(char), program_size, program_handle);
-    fclose(program_handle);
-
     // Create program from file
-    program = clCreateProgramWithSource(ctx, 1, (const char**)&program_buffer, &program_size, &err);
+    program = clCreateProgramWithSource(ctx, 1, (const char**)&kernel_source, &program_size, &err);
     CHECK_OCL_ERROR(err, "Couldn't create the program");
-    free(program_buffer);
 
     // Build program
     err = clBuildProgram(program, 0, NULL, "-cl-std=CL2.0", NULL, NULL);
@@ -166,7 +171,8 @@ int oclInitialize(ID3D11Device *pD3D11Device)
     CHECK_OCL_ERROR(err, "Couldn't create a context");
 
     /* Build the program and create a kernel */
-    err = buildProgram(context, device, PROGRAM_FILE, program);
+    char* kernel_source = (enableReadWriteKernel) ? kernel_code : kernel_code2;
+    err = buildProgram(context, device, kernel_source, program);
     CHECK_OCL_ERROR(err, "Couldn't build program");
 
     kernel = clCreateKernel(program, KERNEL_FUNC, &err);
@@ -186,6 +192,16 @@ int oclProcessDecodeRT(size_t width, size_t height, ID3D11Texture2D *pDecodeNV12
     size_t global_size[2];
     size_t origin[3], region[3];
 
+    cl_image_format imgFormat = {};
+    imgFormat.image_channel_order = CL_R;
+    imgFormat.image_channel_data_type = CL_UNORM_INT8;
+    cl_image_desc imgDesc = {};
+    imgDesc.image_width = width;
+    imgDesc.image_height = height;
+    imgDesc.image_type = CL_MEM_OBJECT_IMAGE2D;
+    cl_mem outSurf = clCreateImage(context, CL_MEM_WRITE_ONLY, &imgFormat, &imgDesc, NULL, &err);
+    CHECK_OCL_ERROR(err, "clCreateImage2D failed");
+
     // Note: the image format of sharedImageY created from NV12 d3d11 texture is 
     // image_channel_data_type = CL_UNORM_INT8, image_channel_order = CL_R;
     cl_mem sharedImageY;
@@ -202,6 +218,12 @@ int oclProcessDecodeRT(size_t width, size_t height, ID3D11Texture2D *pDecodeNV12
     err = clSetKernelArg(kernel, 0, sizeof(cl_mem), &sharedImageY);
     CHECK_OCL_ERROR(err, "Couldn't set a kernel argument");
 
+    if (!enableReadWriteKernel)
+    {
+        err = clSetKernelArg(kernel, 1, sizeof(cl_mem), &outSurf);
+        CHECK_OCL_ERROR(err, "clSetKernelArg failed");
+    }
+
     // Enqueue kernel
     global_size[0] = height; global_size[1] = width;
     err = clEnqueueNDRangeKernel(queue, kernel, 2, NULL, global_size, NULL, 0, NULL, NULL);
@@ -215,7 +237,8 @@ int oclProcessDecodeRT(size_t width, size_t height, ID3D11Texture2D *pDecodeNV12
     vector<uint8_t> hostMem(width*height);
     origin[0] = 0; origin[1] = 0; origin[2] = 0;
     region[0] = width; region[1] = height; region[2] = 1;
-    err = clEnqueueReadImage(queue, sharedImageY, CL_TRUE, origin, region, 0, 0, (void*)&hostMem[0], 0, NULL, NULL);
+    cl_mem readSurf = (enableReadWriteKernel) ? sharedImageY : outSurf;
+    err = clEnqueueReadImage(queue, readSurf, CL_TRUE, origin, region, 0, 0, (void*)&hostMem[0], 0, NULL, NULL);
     CHECK_OCL_ERROR(err, "Couldn't read from the image object");
 
     err = clEnqueueReleaseD3D11ObjectsKHR(queue, 1, &sharedImageY, 0, NULL, NULL);
@@ -226,6 +249,7 @@ int oclProcessDecodeRT(size_t width, size_t height, ID3D11Texture2D *pDecodeNV12
     clReleaseCommandQueue(queue);
     clReleaseProgram(program);
     clReleaseContext(context);
+    clReleaseMemObject(outSurf);
 
     return 0;
 }
