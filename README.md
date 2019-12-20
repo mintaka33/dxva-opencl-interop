@@ -51,4 +51,5 @@ https://www.khronos.org/registry/OpenCL/sdk/1.2/docs/man/xhtml/clEnqueueAcquireD
 ```
 
 ## 3. execution timing
-![timing](https://github.com/mintaka33/dxva-opencl-interop/blob/master/interop/interop/result/timing3.png?raw=true)
+![timing](interop/interop/timing3.png)
+
