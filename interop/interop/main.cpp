@@ -241,6 +241,16 @@ int oclProcessDecodeRT(size_t width, size_t height, ID3D11Texture2D *pDecodeNV12
     err = clEnqueueReadImage(queue, readSurf, CL_TRUE, origin, region, 0, 0, (void*)&hostMem[0], 0, NULL, NULL);
     CHECK_OCL_ERROR(err, "Couldn't read from the image object");
 
+    if (1)
+    {
+        FILE* fp;
+        char fileName[256] = {};
+        sprintf_s(fileName, 256, "out_%d_%d_yplane.yuv", width, height);
+        fopen_s(&fp, fileName, "wb");
+        fwrite((void*)&hostMem[0], width*height, 1, fp);
+        fclose(fp);
+    }
+
     err = clEnqueueReleaseD3D11ObjectsKHR(queue, 1, &sharedImageY, 0, NULL, NULL);
     CHECK_OCL_ERROR(err, "Failed to call clEnqueueReleaseD3D11ObjectsKHR");
 
@@ -256,6 +266,9 @@ int oclProcessDecodeRT(size_t width, size_t height, ID3D11Texture2D *pDecodeNV12
 
 int main(char argc, char** argv)
 {
+    if (argc > 1)
+        enableReadWriteKernel = 0;
+
     DXVAData dxvaDecData = g_dxvaDataAVC_Short;
     HRESULT hr = S_OK;
     ID3D11Device *pD3D11Device = NULL;
